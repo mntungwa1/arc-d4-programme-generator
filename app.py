@@ -1,6 +1,7 @@
 """ARC D4 Bankability Pathway and Concept Note Generator."""
 from __future__ import annotations
 
+import base64
 from datetime import datetime, timezone
 from io import BytesIO
 from pathlib import Path
@@ -15,6 +16,7 @@ DEFAULT_BOOK = Path(__file__).parent / "data" / "ARC_D4_Automation_Matrix.xlsx"
 # where the workbook sits next to app.py.
 if not DEFAULT_BOOK.exists():
     DEFAULT_BOOK = Path(__file__).parent / "ARC_D4_Automation_Matrix.xlsx"
+EMBEDDED_BOOK = Path(__file__).parent / "ARC_D4_Automation_Matrix.b64"
 
 
 def read_matrix(file) -> dict[str, pd.DataFrame]:
@@ -37,7 +39,9 @@ def read_matrix(file) -> dict[str, pd.DataFrame]:
 
 @st.cache_data(show_spinner=False)
 def load_default():
-    return read_matrix(DEFAULT_BOOK)
+    if DEFAULT_BOOK.exists():
+        return read_matrix(DEFAULT_BOOK)
+    return read_matrix(BytesIO(base64.b64decode(EMBEDDED_BOOK.read_text())))
 
 
 def nonblank(value):
@@ -77,7 +81,7 @@ with st.sidebar:
 try:
     if upload:
         matrix = read_matrix(upload)
-    elif DEFAULT_BOOK.exists():
+    elif DEFAULT_BOOK.exists() or EMBEDDED_BOOK.exists():
         matrix = load_default()
     else:
         st.warning("Upload the ARC D4 Automation Matrix (.xlsx) in the sidebar to start the programme workflow.")
