@@ -75,7 +75,14 @@ with st.sidebar:
     st.caption("If no workbook is uploaded, the supplied ARC D4 Automation Matrix is used.")
 
 try:
-    matrix = read_matrix(upload) if upload else load_default()
+    if upload:
+        matrix = read_matrix(upload)
+    elif DEFAULT_BOOK.exists():
+        matrix = load_default()
+    else:
+        st.warning("Upload the ARC D4 Automation Matrix (.xlsx) in the sidebar to start the programme workflow.")
+        st.info("The hosted app deliberately waits for the governed workbook rather than generating programme content without its source data.")
+        st.stop()
 except Exception as exc:
     st.error(f"The workbook could not be read: {exc}")
     st.stop()
