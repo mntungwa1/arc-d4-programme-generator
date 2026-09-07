@@ -20,6 +20,7 @@ if not DEFAULT_BOOK.exists():
 EMBEDDED_BOOK = Path(__file__).parent / "ARC_D4_Automation_Matrix.b64"
 SUPABASE_URL = "https://wrejrxzgyuxsfbxutezg.supabase.co"
 SUPABASE_KEY = "sb_publishable_UfYoG2ZgKP0nLA5KGwEG6w_2rCP9_R8"
+APP_URL = "https://arc-d4-programme-generator-c7qdwgesqvnwjafgvpxgat.streamlit.app/"
 
 
 def shared_client():
@@ -139,8 +140,12 @@ with st.sidebar:
                 st.error(f"Sign-in failed: {exc}")
         if sign_up.button("Create account") and auth_email and auth_password:
             try:
-                shared_client().auth.sign_up({"email": auth_email, "password": auth_password})
-                st.success("Account created. Confirm the email, then sign in.")
+                shared_client().auth.sign_up({
+                    "email": auth_email,
+                    "password": auth_password,
+                    "options": {"email_redirect_to": APP_URL},
+                })
+                st.success("Account created. Confirm the email, then return here and sign in.")
             except Exception as exc:
                 st.error(f"Account creation failed: {exc}")
     else:
