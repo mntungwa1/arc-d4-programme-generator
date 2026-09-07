@@ -85,9 +85,11 @@ D3_CRITERIA = (
 )
 
 def c7_description(record):
-    return (f"{record['Innovation']} is a {record['Type'].lower()} innovation in {record['Pillar']}, "
-            f"positioned at {record['Value chain']} on the DRM value chain. It is classified as "
-            f"{record['DRM cycle'].lower()}, {record['Maturity'].lower()}, with {record['Hazard reach'].lower()} reach.")
+    values = {str(key).strip(): value for key, value in record.items()}
+    return (f"{values.get('Innovation', 'This record')} is a {str(values.get('Type', 'classified')).lower()} innovation in {values.get('Pillar', 'the portfolio')}, "
+            f"positioned at {values.get('Value chain', 'the relevant position')} on the DRM value chain. It is classified as "
+            f"{str(values.get('DRM cycle', 'cross-cutting')).lower()}, {str(values.get('Maturity', 'unconfirmed')).lower()}, "
+            f"with {str(values.get('Hazard reach', 'unconfirmed')).lower()} reach.")
 
 def score_d3_profile(profile):
     transfers = max(1, int(profile.get("bps_transfers", 1)))
