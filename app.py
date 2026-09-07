@@ -33,6 +33,11 @@ def read_matrix(file) -> dict[str, pd.DataFrame]:
                 break
         frame = pd.read_excel(book, sheet_name=sheet, header=header_row)
         frame = frame.dropna(how="all").dropna(axis=1, how="all")
+        # Plain-language labels used throughout the interface.
+        frame = frame.replace({
+            r"(?i)non-blocking": "Non-Mandatory",
+            r"(?i)blocking": "Mandatory",
+        }, regex=True)
         result[sheet] = frame
     return result
 
@@ -113,23 +118,51 @@ profile = st.session_state.profile.setdefault(innovation, {
 tabs = st.tabs(["1. Pathway", "2. Innovation profile", "3. Evidence & research", "4. Portfolio", "5. Output & audit"])
 
 with tabs[0]:
+    pathway_view, selected_view = st.columns([3, 1], gap="large")
     stages = matrix["01_Stages"].fillna("—")
-    st.subheader("The required sequence")
-    lanes = stages.groupby("Lane", sort=False)
-    for lane, items in lanes:
-        with st.expander(str(lane), expanded=True):
-            for _, s in items.iterrows():
-                left, right = st.columns([1, 5])
-                if left.button(str(s["Stage ID"]), key=f"stage_{s['Stage ID']}"):
-                    st.session_state.selected_stage = s["Stage ID"]
-                right.markdown(f"**{s['Stage ID']} — {s['Stage name']}**  ")
-                right.caption(f"Entry: {s['Entry condition']}  |  Exit: {s['Exit condition']}  |  {s['Automation level']}")
-    selected = stages.loc[stages["Stage ID"] == st.session_state.selected_stage].iloc[0]
-    st.info(f"Selected: {selected['Stage ID']} — {selected['Stage name']}. Gate: {selected['Decision gate']}")
-    steps = matrix["02_Steps"]
-    stage_steps = steps.loc[steps["Stage ID"] == selected["Stage ID"]]
-    if len(stage_steps): st.dataframe(stage_steps, use_container_width=True, hide_index=True)
-    else: st.caption("This stage is governed by the entry and exit conditions above; no separate executable step is listed.")
+    with pathway_view:
+        st.subheader("The required sequence")
+        lanes = stages.groupby("Lane", sort=False)
+        for lane, items in lanes:
+            with st.expander(str(lane), expanded=True):
+                for _, s in items.iterrows():
+                    left, right = st.columns([1, 5])
+                    if left.button(str(s["Stage ID"]), key=f"stage_{s['Stage ID']}"):
+                        st.session_state.selected_stage = s["Stage ID"]
+                    right.markdown(f"**{s['Stage ID']} — {s['Stage name']}**  ")
+                    right.caption(f"Entry: {s['Entry condition']}  |  Exit: {s['Exit condition']}  |  {s['Automation level']}")
+    with selected_view:
+        selected = stages.loc[stages["Stage ID"] == st.session_state.selected_stage].iloc[0]
+        st.subheader("Selected stage")
+        st.markdown(f"**{selected['Stage ID']} — {selected['Stage name']}**")
+        st.caption(f"Gate: {selected['Decision gate']}")
+        st.markdown("**Entry condition**")
+        st.write(selected["Entry condition"])
+        st.markdown("**Exit condition**")
+        st.write(selected["Exit condition"])
+        st.markdown("**Accountable**")
+        st.write(selected["Accountable"])
+        steps = matrix["02_Steps"]
+        stage_steps = steps.loc[steps["Stage ID"] == selected["Stage ID"]]
+        if len(stage_steps):
+            st.markdown("**Required actions**")
+            for _, step in stage_steps.iterrows():
+                st.caption(f"{step['Step ID']} — {step['Step description']}")
+        if selected["Stage ID"] == "S1":
+            st.markdown("**S1 portfolio records**")
+            s1_records = portfolio.copy()
+            score_column = "IPI v2.0 (computed)"
+            s1_records["Record status"] = s1_records[score_column].apply(
+                lambda value: "Pending" if str(value).strip().upper() == "PENDING" else "Scored"
+            )
+            st.dataframe(s1_records[["#", "Innovation", score_column, "Record status"]],
+                         use_container_width=True, hide_index=True, height=420)
+        elif selected["Stage ID"] == "S2":
+            st.markdown("**S2 selected Top 10**")
+            top_ten = portfolio.sort_values("#").head(10)
+            st.caption("The current workbook records these as the first ten D3 portfolio selections.")
+            st.dataframe(top_ten[["#", "Innovation", "IPI v1 / Tier (D3 ref)", "Confidence"]],
+                         use_container_width=True, hide_index=True, height=340)
 
 with tabs[1]:
     st.subheader("Investment-Ready Innovation Profile")
