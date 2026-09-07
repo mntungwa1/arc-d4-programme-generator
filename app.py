@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pandas as pd
 import streamlit as st
+from supabase import create_client
 
 st.set_page_config(page_title="ARC D4 Programme Generator", page_icon="◆", layout="wide")
 
@@ -17,6 +18,16 @@ DEFAULT_BOOK = Path(__file__).parent / "data" / "ARC_D4_Automation_Matrix.xlsx"
 if not DEFAULT_BOOK.exists():
     DEFAULT_BOOK = Path(__file__).parent / "ARC_D4_Automation_Matrix.xlsx"
 EMBEDDED_BOOK = Path(__file__).parent / "ARC_D4_Automation_Matrix.b64"
+SUPABASE_URL = "https://wrejrxzgyuxsfbxutezg.supabase.co"
+SUPABASE_KEY = "sb_publishable_UfYoG2ZgKP0nLA5KGwEG6w_2rCP9_R8"
+
+
+def shared_client():
+    client = create_client(SUPABASE_URL, SUPABASE_KEY)
+    session = st.session_state.get("d4_auth_session")
+    if session:
+        client.auth.set_session(session.access_token, session.refresh_token)
+    return client
 
 
 def read_matrix(file) -> dict[str, pd.DataFrame]:
@@ -82,6 +93,30 @@ with st.sidebar:
     st.header("Programme workbook")
     upload = st.file_uploader("Use an updated automation matrix", type="xlsx")
     st.caption("If no workbook is uploaded, the supplied ARC D4 Automation Matrix is used.")
+    workstream = st.radio("Workstream", ["C1 — Create a new innovation", "C2 — Portfolio selection and investment readiness"])
+    st.divider()
+    st.subheader("Shared innovation register")
+    if "d4_auth_session" not in st.session_state:
+        auth_email = st.text_input("Email", key="auth_email")
+        auth_password = st.text_input("Password", type="password", key="auth_password")
+        sign_in, sign_up = st.columns(2)
+        if sign_in.button("Sign in") and auth_email and auth_password:
+            try:
+                result = shared_client().auth.sign_in_with_password({"email": auth_email, "password": auth_password})
+                st.session_state.d4_auth_session = result.session
+                st.rerun()
+            except Exception as exc:
+                st.error(f"Sign-in failed: {exc}")
+        if sign_up.button("Create account") and auth_email and auth_password:
+            try:
+                shared_client().auth.sign_up({"email": auth_email, "password": auth_password})
+                st.success("Account created. Confirm the email, then sign in.")
+            except Exception as exc:
+                st.error(f"Account creation failed: {exc}")
+    else:
+        if st.button("Sign out"):
+            del st.session_state.d4_auth_session
+            st.rerun()
 
 try:
     if upload:
@@ -102,14 +137,23 @@ for key, default in {"profile": {}, "audit": [], "selected_stage": "S1"}.items()
 
 portfolio = matrix["06_Portfolio"].copy()
 portfolio["Innovation"] = portfolio["Innovation"].astype(str)
-innovation = st.sidebar.selectbox("Innovation to work on", portfolio["Innovation"].tolist())
-row = portfolio.loc[portfolio["Innovation"] == innovation].iloc[0]
+shared_innovations = []
+if "d4_auth_session" in st.session_state:
+    try:
+        shared_innovations = shared_client().table("d4_innovations").select("innovation_name,innovation_url,innovation_type").order("innovation_name").execute().data or []
+    except Exception as exc:
+        st.sidebar.warning(f"Shared register unavailable: {exc}")
+shared_names = [item["innovation_name"] for item in shared_innovations]
+innovation = st.sidebar.selectbox("Innovation to work on", portfolio["Innovation"].tolist() + shared_names)
+is_shared_innovation = innovation in shared_names
+row = portfolio.loc[portfolio["Innovation"] == innovation].iloc[0] if not is_shared_innovation else None
 types = matrix.get("20_Innovation_Type", pd.DataFrame())
 match = types.loc[types.get("Innovation", pd.Series(dtype=str)).astype(str) == innovation] if not types.empty else pd.DataFrame()
-default_type = match.iloc[0]["Type"] if not match.empty else ""
+default_type = (next(item["innovation_type"] for item in shared_innovations if item["innovation_name"] == innovation)
+                if is_shared_innovation else (match.iloc[0]["Type"] if not match.empty else ""))
 
 profile = st.session_state.profile.setdefault(innovation, {
-    "innovation_id": f"INV-{int(row['#']):03d}", "innovation_name": innovation,
+    "innovation_id": f"D4-{len(shared_names):03d}" if is_shared_innovation else f"INV-{int(row['#']):03d}", "innovation_name": innovation,
     "innovation_type": default_type, "delivery_counterpart": "", "basis_risk_treatment": "",
     "premium_transition_pathway": "", "recurrent_cost_custodian": "", "parametric_trigger": "No",
     "subsidised_cost": "No", "template": "TPL-EU"
@@ -118,6 +162,10 @@ profile = st.session_state.profile.setdefault(innovation, {
 tabs = st.tabs(["1. Pathway", "2. New Innovation Profile", "3. Evidence & research", "4. Portfolio", "5. Output & audit"])
 
 with tabs[0]:
+    if workstream.startswith("C1"):
+        st.info("**Workstream C1** — create and admit a new innovation. Complete the New Innovation Profile, then use S1 and S2 to add it to the shared Innovation to work on list.")
+    else:
+        st.info("**Workstream C2** — select an admitted innovation, review S1 and S2, then progress it through Workstream D.")
     pathway_view, selected_view = st.columns([3, 1], gap="large")
     stages = matrix["01_Stages"].fillna("—")
     with pathway_view:
@@ -166,6 +214,8 @@ with tabs[0]:
 
 with tabs[1]:
     st.subheader("Investment-Ready Innovation Profile")
+    if workstream.startswith("C1"):
+        st.info("Workstream C1 creates a new innovation. Once admitted, it is added permanently to the shared list at left and can proceed through Workstream C2.")
     st.caption("Complete fields as evidence becomes available. Blank required fields remain visible as gaps; the app will not invent text.")
     profile["new_innovation_name"] = st.text_input(
         "New Innovation Name",
@@ -178,6 +228,25 @@ with tabs[1]:
         placeholder="https://example.org/innovation",
         help="Add the official web page, source record, or supporting information link for the innovation.",
     )
+    if workstream.startswith("C1"):
+        if "d4_auth_session" not in st.session_state:
+            st.warning("Sign in through the Shared innovation register in the sidebar to add this innovation permanently.")
+        elif st.button("Add innovation to the shared list"):
+            name = profile["new_innovation_name"].strip()
+            if len(name) < 3:
+                st.error("Enter a New Innovation Name of at least three characters.")
+            else:
+                try:
+                    user = shared_client().auth.get_user().user
+                    shared_client().table("d4_innovations").insert({
+                        "innovation_name": name,
+                        "innovation_url": profile["innovation_url"].strip() or None,
+                        "innovation_type": profile.get("innovation_type") or None,
+                        "created_by": user.id,
+                    }).execute()
+                    st.success("Innovation added permanently. Select it from Innovation to work on, then continue in Workstream C2.")
+                except Exception as exc:
+                    st.error(f"Could not add the innovation: {exc}")
     a, b = st.columns(2)
     with a:
         profile["innovation_type"] = st.selectbox("Innovation type", ["", "Tech", "Non-tech", "Hybrid"], index=["", "Tech", "Non-tech", "Hybrid"].index(profile.get("innovation_type", "") if profile.get("innovation_type", "") in ["", "Tech", "Non-tech", "Hybrid"] else ""))
