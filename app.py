@@ -115,7 +115,7 @@ profile = st.session_state.profile.setdefault(innovation, {
     "subsidised_cost": "No", "template": "TPL-EU"
 })
 
-tabs = st.tabs(["1. Pathway", "2. Innovation profile", "3. Evidence & research", "4. Portfolio", "5. Output & audit"])
+tabs = st.tabs(["1. Pathway", "2. New Innovation Profile", "3. Evidence & research", "4. Portfolio", "5. Output & audit"])
 
 with tabs[0]:
     pathway_view, selected_view = st.columns([3, 1], gap="large")
