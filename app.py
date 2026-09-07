@@ -140,7 +140,7 @@ portfolio["Innovation"] = portfolio["Innovation"].astype(str)
 shared_innovations = []
 if "d4_auth_session" in st.session_state:
     try:
-        shared_innovations = shared_client().table("d4_innovations").select("innovation_name,innovation_url,innovation_type").order("innovation_name").execute().data or []
+        shared_innovations = shared_client().table("d4_innovations").select("innovation_name,innovation_url,innovation_type,d3_profile").order("innovation_name").execute().data or []
     except Exception as exc:
         st.sidebar.warning(f"Shared register unavailable: {exc}")
 shared_names = [item["innovation_name"] for item in shared_innovations]
@@ -152,14 +152,21 @@ match = types.loc[types.get("Innovation", pd.Series(dtype=str)).astype(str) == i
 default_type = (next(item["innovation_type"] for item in shared_innovations if item["innovation_name"] == innovation)
                 if is_shared_innovation else (match.iloc[0]["Type"] if not match.empty else ""))
 
-profile = st.session_state.profile.setdefault(innovation, {
-    "innovation_id": f"D4-{len(shared_names):03d}" if is_shared_innovation else f"INV-{int(row['#']):03d}", "innovation_name": innovation,
-    "innovation_type": default_type, "delivery_counterpart": "", "basis_risk_treatment": "",
-    "premium_transition_pathway": "", "recurrent_cost_custodian": "", "parametric_trigger": "No",
-    "subsidised_cost": "No", "template": "TPL-EU"
-})
+shared_record = next((item for item in shared_innovations if item["innovation_name"] == innovation), {})
+saved_d3_profile = shared_record.get("d3_profile") or {} if is_shared_innovation else {}
+base_profile = {
+    "innovation_id": f"D4-{len(shared_names):03d}" if is_shared_innovation else f"INV-{int(row['#']):03d}",
+    "innovation_name": innovation, "innovation_type": default_type, "delivery_counterpart": "",
+    "basis_risk_treatment": "", "premium_transition_pathway": "",
+    "recurrent_cost_custodian": "", "parametric_trigger": "No",
+    "subsidised_cost": "No", "template": "TPL-EU",
+}
+profile = st.session_state.profile.setdefault(innovation, {**base_profile, **saved_d3_profile})
+profile["innovation_name"] = innovation
 
-tabs = st.tabs(["1. Pathway", "2. New Innovation Profile", "3. Evidence & research", "4. Portfolio", "5. Output & audit"])
+tab_labels = (["1. Pathway", "2. New Innovation Profile", "3. Evidence & research", "4. Portfolio", "5. Output & audit"]
+              if workstream.startswith("C1") else ["1. Pathway"])
+tabs = st.tabs(tab_labels)
 
 with tabs[0]:
     if workstream.startswith("C1"):
@@ -168,9 +175,13 @@ with tabs[0]:
         st.info("**Workstream C2** — select an admitted innovation, review S1 and S2, then progress it through Workstream D.")
     pathway_view, selected_view = st.columns([3, 1], gap="large")
     stages = matrix["01_Stages"].fillna("—")
+    permitted_stages = ["S1", "S2"] if workstream.startswith("C1") else stages["Stage ID"].tolist()
+    if st.session_state.selected_stage not in permitted_stages:
+        st.session_state.selected_stage = permitted_stages[0]
+    visible_stages = stages[stages["Stage ID"].isin(permitted_stages)]
     with pathway_view:
         st.subheader("The required sequence")
-        lanes = stages.groupby("Lane", sort=False)
+        lanes = visible_stages.groupby("Lane", sort=False)
         for lane, items in lanes:
             with st.expander(str(lane), expanded=True):
                 for _, s in items.iterrows():
@@ -212,112 +223,121 @@ with tabs[0]:
             st.dataframe(top_ten[["#", "Innovation", "IPI v1 / Tier (D3 ref)", "Confidence"]],
                          use_container_width=True, hide_index=True, height=340)
 
-with tabs[1]:
-    st.subheader("Investment-Ready Innovation Profile")
-    if workstream.startswith("C1"):
-        st.info("Workstream C1 creates a new innovation. Once admitted, it is added permanently to the shared list at left and can proceed through Workstream C2.")
-    st.caption("Complete fields as evidence becomes available. Blank required fields remain visible as gaps; the app will not invent text.")
-    profile["new_innovation_name"] = st.text_input(
-        "New Innovation Name",
-        profile.get("new_innovation_name", profile.get("innovation_name", "")),
-        help="Enter the name to use for this new or adapted innovation profile.",
-    )
-    profile["innovation_url"] = st.text_input(
-        "Innovation URL",
-        profile.get("innovation_url", ""),
-        placeholder="https://example.org/innovation",
-        help="Add the official web page, source record, or supporting information link for the innovation.",
-    )
-    if workstream.startswith("C1"):
+if workstream.startswith("C1"):
+    with tabs[1]:
+        st.subheader("Investment-Ready Innovation Profile")
+        if workstream.startswith("C1"):
+            st.info("Workstream C1 creates a new innovation. Once admitted, it is added permanently to the shared list at left and can proceed through Workstream C2.")
+        st.caption("Complete fields as evidence becomes available. Blank required fields remain visible as gaps; the app will not invent text.")
+        profile["new_innovation_name"] = st.text_input(
+            "New Innovation Name",
+            profile.get("new_innovation_name", profile.get("innovation_name", "")),
+            help="Enter the name to use for this new or adapted innovation profile.",
+        )
+        profile["innovation_url"] = st.text_input(
+            "Innovation URL",
+            profile.get("innovation_url", ""),
+            placeholder="https://example.org/innovation",
+            help="Add the official web page, source record, or supporting information link for the innovation.",
+        )
         if "d4_auth_session" not in st.session_state:
-            st.warning("Sign in through the Shared innovation register in the sidebar to add this innovation permanently.")
-        elif st.button("Add innovation to the shared list"):
+            st.warning("Sign in through the Shared innovation register in the sidebar before admitting the completed D3 innovation.")
+        a, b = st.columns(2)
+        with a:
+            profile["innovation_type"] = st.selectbox("Innovation type", ["", "Tech", "Non-tech", "Hybrid"], index=["", "Tech", "Non-tech", "Hybrid"].index(profile.get("innovation_type", "") if profile.get("innovation_type", "") in ["", "Tech", "Non-tech", "Hybrid"] else ""))
+            profile["delivery_counterpart"] = st.text_input("Named delivery counterpart *", profile.get("delivery_counterpart", ""))
+            profile["recurrent_cost_custodian"] = st.text_input("Named recurrent-cost custodian *", profile.get("recurrent_cost_custodian", ""))
+        with b:
+            profile["parametric_trigger"] = st.selectbox("Does the concept use a parametric trigger?", ["No", "Yes"], index=1 if profile.get("parametric_trigger") == "Yes" else 0)
+            profile["subsidised_cost"] = st.selectbox("Does any cost start subsidised?", ["No", "Yes"], index=1 if profile.get("subsidised_cost") == "Yes" else 0)
+            profile["template"] = st.selectbox("Preferred financing template", matrix["09_Template_Map"]["Template ID"].tolist(), index=max(0, matrix["09_Template_Map"]["Template ID"].tolist().index(profile.get("template", "TPL-EU"))))
+        if profile["parametric_trigger"] == "Yes":
+            profile["basis_risk_treatment"] = st.text_area("Basis-risk treatment *", profile.get("basis_risk_treatment", ""))
+        if profile["subsidised_cost"] == "Yes":
+            profile["premium_transition_pathway"] = st.text_area("Premium-transition pathway *", profile.get("premium_transition_pathway", ""))
+        st.divider()
+        components = matrix["07_IRIP_Components"]
+        for _, c in components.iterrows():
+            key = f"component_{c['#']}"
+            profile[key] = st.text_area(f"{c['#']}. {c['Component']} — {c['Status if absent']}", profile.get(key, ""), key=f"{innovation}_{key}")
+    
+        st.divider()
+        st.subheader("Admit completed D3 innovation")
+        st.caption("This saves the complete C1/D3 profile with the innovation in the protected shared register. It becomes available in Workstream C2.")
+        if "d4_auth_session" in st.session_state and st.button("Add innovation and D3 profile to the shared list"):
             name = profile["new_innovation_name"].strip()
             if len(name) < 3:
                 st.error("Enter a New Innovation Name of at least three characters.")
             else:
                 try:
                     user = shared_client().auth.get_user().user
+                    saved_profile = {key: value for key, value in profile.items()}
+                    saved_profile["innovation_name"] = name
+                    saved_profile["innovation_url"] = profile["innovation_url"].strip()
                     shared_client().table("d4_innovations").insert({
                         "innovation_name": name,
                         "innovation_url": profile["innovation_url"].strip() or None,
                         "innovation_type": profile.get("innovation_type") or None,
+                        "d3_profile": saved_profile,
                         "created_by": user.id,
                     }).execute()
-                    st.success("Innovation added permanently. Select it from Innovation to work on, then continue in Workstream C2.")
+                    st.success("Innovation and its D3 profile are now in the shared list. Select it in the sidebar and change to Workstream C2.")
                 except Exception as exc:
                     st.error(f"Could not add the innovation: {exc}")
-    a, b = st.columns(2)
-    with a:
-        profile["innovation_type"] = st.selectbox("Innovation type", ["", "Tech", "Non-tech", "Hybrid"], index=["", "Tech", "Non-tech", "Hybrid"].index(profile.get("innovation_type", "") if profile.get("innovation_type", "") in ["", "Tech", "Non-tech", "Hybrid"] else ""))
-        profile["delivery_counterpart"] = st.text_input("Named delivery counterpart *", profile.get("delivery_counterpart", ""))
-        profile["recurrent_cost_custodian"] = st.text_input("Named recurrent-cost custodian *", profile.get("recurrent_cost_custodian", ""))
-    with b:
-        profile["parametric_trigger"] = st.selectbox("Does the concept use a parametric trigger?", ["No", "Yes"], index=1 if profile.get("parametric_trigger") == "Yes" else 0)
-        profile["subsidised_cost"] = st.selectbox("Does any cost start subsidised?", ["No", "Yes"], index=1 if profile.get("subsidised_cost") == "Yes" else 0)
-        profile["template"] = st.selectbox("Preferred financing template", matrix["09_Template_Map"]["Template ID"].tolist(), index=max(0, matrix["09_Template_Map"]["Template ID"].tolist().index(profile.get("template", "TPL-EU"))))
-    if profile["parametric_trigger"] == "Yes":
-        profile["basis_risk_treatment"] = st.text_area("Basis-risk treatment *", profile.get("basis_risk_treatment", ""))
-    if profile["subsidised_cost"] == "Yes":
-        profile["premium_transition_pathway"] = st.text_area("Premium-transition pathway *", profile.get("premium_transition_pathway", ""))
-    st.divider()
-    components = matrix["07_IRIP_Components"]
-    for _, c in components.iterrows():
-        key = f"component_{c['#']}"
-        profile[key] = st.text_area(f"{c['#']}. {c['Component']} — {c['Status if absent']}", profile.get(key, ""), key=f"{innovation}_{key}")
-
-with tabs[2]:
-    st.subheader("Evidence sufficiency and research break-out")
-    dictionary = matrix["04_Field_Dictionary"]
-    required = dictionary[dictionary["Required by"].astype(str).str.contains(profile["template"].replace("TPL-", ""), case=False, na=False)]
-    st.caption("Fields below are governed by the workbook. Use a research request only where a permitted evidence gap cannot be filled from the D3 record.")
-    st.dataframe(required[["Field ID", "Label", "Source", "Validation", "Research break-out permitted"]], use_container_width=True, hide_index=True)
-    st.markdown("#### Available research tasks")
-    st.dataframe(matrix["10_Research_Broker"], use_container_width=True, hide_index=True)
-
-with tabs[3]:
-    st.subheader("Portfolio context")
-    st.dataframe(portfolio, use_container_width=True, hide_index=True)
-    st.markdown("#### Gap linkages for the selected innovation")
-    links = matrix["17_Gap_Linkages"]
-    # Excel sometimes preserves an invisible trailing space in this heading.
-    # Locate it defensively so the workflow does not fail because of formatting.
-    linkage_name_column = next(
-        (column for column in links.columns
-         if "intervention" in str(column).strip().lower()
-         and "innovation" in str(column).strip().lower()),
-        None,
-    )
-    selected_links = (
-        links[links[linkage_name_column].astype(str).str.contains(
-            innovation.split("+")[0].strip(), case=False, na=False)]
-        if linkage_name_column else pd.DataFrame()
-    )
-    if len(selected_links): st.dataframe(selected_links, use_container_width=True, hide_index=True)
-    else: st.warning("No direct linkage is found by name. Record the relevant governed gap linkage before admission.")
-    st.markdown("#### Five-pillar response")
-    pillar = matrix["08_Pillar_Response"]
-    st.dataframe(pillar[pillar["Innovation"] == innovation], use_container_width=True, hide_index=True)
-
-with tabs[4]:
-    st.subheader("Generation gate and controlled export")
-    failures = []
-    if not nonblank(profile.get("delivery_counterpart")): failures.append("V02 — a delivery counterpart must be named.")
-    if not nonblank(profile.get("recurrent_cost_custodian")): failures.append("V05 — a recurrent-cost custodian must be named.")
-    if profile.get("parametric_trigger") == "Yes" and not nonblank(profile.get("basis_risk_treatment")): failures.append("V03 — basis-risk treatment is required for a parametric trigger.")
-    if profile.get("subsidised_cost") == "Yes" and not nonblank(profile.get("premium_transition_pathway")): failures.append("V04 — premium-transition pathway is required for subsidised costs.")
-    absent = [str(c["#"]) for _, c in matrix["07_IRIP_Components"].iterrows() if not nonblank(profile.get(f"component_{c['#']}"))]
-    if absent: failures.append("V01 — required IRIP components not yet addressed: " + ", ".join(absent))
-    if failures:
-        st.error("Generation is blocked. Resolve the following conditions:")
-        for failure in failures: st.write("• " + failure)
-    else:
-        st.success("All current blocking checks pass. The innovation can proceed to the concept-note generation stage.")
-        if st.button("Commit profile to audit log"):
-            for field, value in profile.items():
-                if nonblank(value): audit(innovation, field, value)
-            st.success("Profile values committed to the in-session audit trail.")
-    st.markdown("#### Audit trail")
-    if st.session_state.audit: st.dataframe(pd.DataFrame(st.session_state.audit), use_container_width=True, hide_index=True)
-    else: st.caption("No profile values committed yet.")
-    st.download_button("Download controlled working record (.xlsx)", make_export(matrix, profile, st.session_state.audit), f"ARC_D4_{profile['innovation_id']}_working_record.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    
+    with tabs[2]:
+        st.subheader("Evidence sufficiency and research break-out")
+        dictionary = matrix["04_Field_Dictionary"]
+        required = dictionary[dictionary["Required by"].astype(str).str.contains(profile["template"].replace("TPL-", ""), case=False, na=False)]
+        st.caption("Fields below are governed by the workbook. Use a research request only where a permitted evidence gap cannot be filled from the D3 record.")
+        st.dataframe(required[["Field ID", "Label", "Source", "Validation", "Research break-out permitted"]], use_container_width=True, hide_index=True)
+        st.markdown("#### Available research tasks")
+        st.dataframe(matrix["10_Research_Broker"], use_container_width=True, hide_index=True)
+    
+    with tabs[3]:
+        st.subheader("Portfolio context")
+        st.dataframe(portfolio, use_container_width=True, hide_index=True)
+        st.markdown("#### Gap linkages for the selected innovation")
+        links = matrix["17_Gap_Linkages"]
+        # Excel sometimes preserves an invisible trailing space in this heading.
+        # Locate it defensively so the workflow does not fail because of formatting.
+        linkage_name_column = next(
+            (column for column in links.columns
+             if "intervention" in str(column).strip().lower()
+             and "innovation" in str(column).strip().lower()),
+            None,
+        )
+        selected_links = (
+            links[links[linkage_name_column].astype(str).str.contains(
+                innovation.split("+")[0].strip(), case=False, na=False)]
+            if linkage_name_column else pd.DataFrame()
+        )
+        if len(selected_links): st.dataframe(selected_links, use_container_width=True, hide_index=True)
+        else: st.warning("No direct linkage is found by name. Record the relevant governed gap linkage before admission.")
+        st.markdown("#### Five-pillar response")
+        pillar = matrix["08_Pillar_Response"]
+        st.dataframe(pillar[pillar["Innovation"] == innovation], use_container_width=True, hide_index=True)
+    
+    with tabs[4]:
+        st.subheader("Generation gate and controlled export")
+        failures = []
+        if not nonblank(profile.get("delivery_counterpart")): failures.append("V02 — a delivery counterpart must be named.")
+        if not nonblank(profile.get("recurrent_cost_custodian")): failures.append("V05 — a recurrent-cost custodian must be named.")
+        if profile.get("parametric_trigger") == "Yes" and not nonblank(profile.get("basis_risk_treatment")): failures.append("V03 — basis-risk treatment is required for a parametric trigger.")
+        if profile.get("subsidised_cost") == "Yes" and not nonblank(profile.get("premium_transition_pathway")): failures.append("V04 — premium-transition pathway is required for subsidised costs.")
+        absent = [str(c["#"]) for _, c in matrix["07_IRIP_Components"].iterrows() if not nonblank(profile.get(f"component_{c['#']}"))]
+        if absent: failures.append("V01 — required IRIP components not yet addressed: " + ", ".join(absent))
+        if failures:
+            st.error("Generation is blocked. Resolve the following conditions:")
+            for failure in failures: st.write("• " + failure)
+        else:
+            st.success("All current blocking checks pass. The innovation can proceed to the concept-note generation stage.")
+            if st.button("Commit profile to audit log"):
+                for field, value in profile.items():
+                    if nonblank(value): audit(innovation, field, value)
+                st.success("Profile values committed to the in-session audit trail.")
+        st.markdown("#### Audit trail")
+        if st.session_state.audit: st.dataframe(pd.DataFrame(st.session_state.audit), use_container_width=True, hide_index=True)
+        else: st.caption("No profile values committed yet.")
+        st.download_button("Download controlled working record (.xlsx)", make_export(matrix, profile, st.session_state.audit), f"ARC_D4_{profile['innovation_id']}_working_record.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    
