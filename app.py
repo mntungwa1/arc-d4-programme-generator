@@ -76,6 +76,34 @@ def audit(innovation, field, value, decision="COMMIT"):
     })
 
 
+
+D3_CRITERIA = (
+    ("BPS", "Measurable impact", 0.20), ("SAS", "Strategic alignment", 0.15),
+    ("GRS", "GESI responsiveness", 0.15), ("TFS", "Technical feasibility", 0.10),
+    ("IFS", "Institutional feasibility", 0.10), ("CVS", "Cost-effectiveness", 0.10),
+    ("RRS", "Scalability and transferability", 0.10), ("SIS", "Sustainability and institutionalisation", 0.10),
+)
+
+def c7_description(record):
+    return (f"{record['Innovation']} is a {record['Type'].lower()} innovation in {record['Pillar']}, "
+            f"positioned at {record['Value chain']} on the DRM value chain. It is classified as "
+            f"{record['DRM cycle'].lower()}, {record['Maturity'].lower()}, with {record['Hazard reach'].lower()} reach.")
+
+def score_d3_profile(profile):
+    transfers = max(1, int(profile.get("bps_transfers", 1)))
+    bps = max(0.0, 10 - 2 * (transfers - 1) - (1 if profile.get("bps_latency") == "Yes" else 0))
+    sas = 5 * (min(4, int(profile.get("sas_sendai", 0))) / 4) + 5 * (min(3, int(profile.get("sas_priorities", 0))) / 3)
+    grs = (10 / 7) * sum(float(profile.get(f"gesi_{n}", 0)) for n in range(1, 8))
+    tfs = 10 * ((float(profile.get("tfs_absorptive", 0)) + float(profile.get("tfs_timeline", 0))) / 2)
+    ifs = 10 * float(profile.get("ifs_dependency", 0))
+    cvs = float(profile.get("cvs_score", 0))
+    rrs = min(10.0, (10 / 16) * (float(profile.get("rrs_operational", 0)) + 0.5 * float(profile.get("rrs_pipeline", 0))))
+    sis = 10 * ((float(profile.get("sis_budget", 0)) + float(profile.get("sis_custodian", 0)) + float(profile.get("sis_recurrent", 0))) / 3)
+    scores = {"BPS": bps, "SAS": sas, "GRS": grs, "TFS": tfs, "IFS": ifs, "CVS": cvs, "RRS": rrs, "SIS": sis}
+    ipi = sum(scores[key] * weight for key, _, weight in D3_CRITERIA)
+    band = "5 — Very high" if ipi > 8 else "4 — High" if ipi > 6 else "3 — Moderate" if ipi > 4 else "2 — Low" if ipi > 2 else "1 — Very low"
+    return scores, round(ipi, 2), round(ipi * 10, 1), band, ("Institutionalisation track" if min(tfs, ifs) == 0 else "Operational track")
+
 def make_export(matrix, profile, audits):
     output = BytesIO()
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
@@ -158,7 +186,7 @@ base_profile = {
     "innovation_id": f"D4-{len(shared_names):03d}" if is_shared_innovation else f"INV-{int(row['#']):03d}",
     "innovation_name": innovation, "innovation_type": default_type, "delivery_counterpart": "",
     "basis_risk_treatment": "", "premium_transition_pathway": "",
-    "recurrent_cost_custodian": "", "parametric_trigger": "No",
+    "recurrent_cost_custodian": "", "short_description": "", "parametric_trigger": "No",
     "subsidised_cost": "No", "template": "TPL-EU",
 }
 profile = st.session_state.profile.setdefault(innovation, {**base_profile, **saved_d3_profile})
@@ -201,6 +229,11 @@ with tabs[0]:
         st.write(selected["Exit condition"])
         st.markdown("**Accountable**")
         st.write(selected["Accountable"])
+        if profile.get("matrix_ipi") is not None:
+            st.markdown("**Annex H matrix summary**")
+            st.caption(f"IPI {float(profile['matrix_ipi']):.2f}/10 · {profile.get('matrix_band', 'Band pending')} · {profile.get('matrix_track', 'Gate pending')} · Evidence: {profile.get('evidence_confidence', 'pending')}")
+            if profile.get("short_description"):
+                st.caption(profile["short_description"])
         steps = matrix["02_Steps"]
         stage_steps = steps.loc[steps["Stage ID"] == selected["Stage ID"]]
         if len(stage_steps):
@@ -229,6 +262,10 @@ if workstream.startswith("C1"):
         if workstream.startswith("C1"):
             st.info("Workstream C1 creates a new innovation. Once admitted, it is added permanently to the shared list at left and can proceed through Workstream C2.")
         st.caption("Complete fields as evidence becomes available. Blank required fields remain visible as gaps; the app will not invent text.")
+        classification = matrix["20_Innovation_Type"].copy()
+        c7_row = classification.loc[classification["Innovation"].astype(str) == innovation]
+        c7_default = c7_description(c7_row.iloc[0]) if len(c7_row) else ""
+        profile["short_description"] = st.text_area("Innovation description (D3 Annex B.2 / Table C.7)", profile.get("short_description") or c7_default, help="Concise description of what the innovation does. The pre-filled statement is generated from the governed Annex C.7 classification.")
         profile["new_innovation_name"] = st.text_input(
             "New Innovation Name",
             profile.get("new_innovation_name", profile.get("innovation_name", "")),
@@ -260,7 +297,45 @@ if workstream.startswith("C1"):
         for _, c in components.iterrows():
             key = f"component_{c['#']}"
             profile[key] = st.text_area(f"{c['#']}. {c['Component']} — {c['Status if absent']}", profile.get(key, ""), key=f"{innovation}_{key}")
-    
+
+        st.divider()
+        st.subheader("Annex H — D3 Prioritisation Matrix")
+        st.caption("Eight weighted criteria. Evidence confidence is reported separately and does not change the IPI.")
+        with st.expander("Enter criterion determinations and calculate IPI", expanded=False):
+            a1, a2 = st.columns(2)
+            with a1:
+                profile["bps_transfers"] = st.number_input("BPS: institutional transfers to household", 1, 6, int(profile.get("bps_transfers", 1)), key=f"{innovation}_bps_transfers")
+                profile["bps_latency"] = st.selectbox("BPS: activation effect exceeds seven days?", ["No", "Yes"], index=1 if profile.get("bps_latency") == "Yes" else 0, key=f"{innovation}_bps_latency")
+                profile["tfs_absorptive"] = st.selectbox("TFS: absorptive capacity", [0.0, 0.5, 1.0], key=f"{innovation}_tfs_a")
+                profile["tfs_timeline"] = st.selectbox("TFS: timeline fit", [0.0, 0.5, 1.0], key=f"{innovation}_tfs_t")
+                profile["ifs_dependency"] = st.selectbox("IFS: dependency resolution", [0.0, 0.5, 1.0], key=f"{innovation}_ifs")
+                profile["cvs_score"] = st.number_input("CVS: value-for-money score", 0.0, 10.0, float(profile.get("cvs_score", 0.0)), 0.5, key=f"{innovation}_cvs")
+                profile["cvs_basis"] = st.text_input("CVS: stated appraisal basis", profile.get("cvs_basis", ""), key=f"{innovation}_cvs_basis")
+            with a2:
+                profile["sas_sendai"] = st.number_input("SAS: evidenced Sendai targets", 0, 4, int(profile.get("sas_sendai", 0)), key=f"{innovation}_sas_sendai")
+                profile["sas_priorities"] = st.number_input("SAS: evidenced SADC DRM priorities", 0, 3, int(profile.get("sas_priorities", 0)), key=f"{innovation}_sas_priorities")
+                profile["rrs_operational"] = st.number_input("RRS: operational Member States", 0, 16, int(profile.get("rrs_operational", 0)), key=f"{innovation}_rrs_operational")
+                profile["rrs_pipeline"] = st.number_input("RRS: planned/pilot Member States", 0, 16, int(profile.get("rrs_pipeline", 0)), key=f"{innovation}_rrs_pipeline")
+                profile["sis_budget"] = st.selectbox("SIS: domestic-budget pathway", [0.0, 0.5, 1.0], key=f"{innovation}_sis_budget")
+                profile["sis_custodian"] = st.selectbox("SIS: named institutional custodian", [0.0, 0.5, 1.0], key=f"{innovation}_sis_custodian")
+                profile["sis_recurrent"] = st.selectbox("SIS: recurrent-cost profile", [0.0, 0.5, 1.0], key=f"{innovation}_sis_recurrent")
+                profile["evidence_confidence"] = st.selectbox("Evidence confidence", ["High", "Moderate", "Low"], index=["High", "Moderate", "Low"].index(profile.get("evidence_confidence", "Moderate")), key=f"{innovation}_evidence_confidence")
+            st.markdown("**GRS — seven inclusion determinations:** 1 = designed; 0.5 = asserted/incidental; 0 = absent.")
+            categories = ["Women and girls", "Children and youth", "Older persons", "Persons with disabilities", "Migrants and displaced persons", "Remote communities", "Indigenous and knowledge-holding communities"]
+            cols = st.columns(4)
+            for n, label in enumerate(categories, 1):
+                with cols[(n - 1) % 4]:
+                    profile[f"gesi_{n}"] = st.selectbox(label, [0.0, 0.5, 1.0], key=f"{innovation}_gesi_{n}")
+            scores, ipi, ipi100, band, track = score_d3_profile(profile)
+            profile.update({f"score_{key.lower()}": round(value, 2) for key, value in scores.items()})
+            profile.update({"matrix_ipi": ipi, "matrix_ipi_100": ipi100, "matrix_band": band, "matrix_track": track})
+            st.dataframe(pd.DataFrame([{"Criterion": key, "Weight": weight, "Score (0–10)": round(scores[key], 2)} for key, _, weight in D3_CRITERIA]), use_container_width=True, hide_index=True)
+            m1, m2, m3, m4 = st.columns(4)
+            m1.metric("IPI", f"{ipi:.2f} / 10")
+            m2.metric("IPI₁₀₀", f"{ipi100:.1f}")
+            m3.metric("Band", band.split(" — ")[0])
+            m4.metric("Gate", track)
+
         st.divider()
         st.subheader("Admit completed D3 innovation")
         st.caption("This saves the complete C1/D3 profile with the innovation in the protected shared register. It becomes available in Workstream C2.")
@@ -295,8 +370,10 @@ if workstream.startswith("C1"):
         st.dataframe(matrix["10_Research_Broker"], use_container_width=True, hide_index=True)
     
     with tabs[3]:
-        st.subheader("Portfolio context")
-        st.dataframe(portfolio, use_container_width=True, hide_index=True)
+        st.subheader("Portfolio context — D3 Annex C.7")
+        classification = matrix["20_Innovation_Type"].copy()
+        classification["Innovation description"] = classification.apply(c7_description, axis=1)
+        st.dataframe(classification, use_container_width=True, hide_index=True)
         st.markdown("#### Gap linkages for the selected innovation")
         links = matrix["17_Gap_Linkages"]
         # Excel sometimes preserves an invisible trailing space in this heading.
