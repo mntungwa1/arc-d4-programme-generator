@@ -167,6 +167,17 @@ with tabs[0]:
 with tabs[1]:
     st.subheader("Investment-Ready Innovation Profile")
     st.caption("Complete fields as evidence becomes available. Blank required fields remain visible as gaps; the app will not invent text.")
+    profile["new_innovation_name"] = st.text_input(
+        "New Innovation Name",
+        profile.get("new_innovation_name", profile.get("innovation_name", "")),
+        help="Enter the name to use for this new or adapted innovation profile.",
+    )
+    profile["innovation_url"] = st.text_input(
+        "Innovation URL",
+        profile.get("innovation_url", ""),
+        placeholder="https://example.org/innovation",
+        help="Add the official web page, source record, or supporting information link for the innovation.",
+    )
     a, b = st.columns(2)
     with a:
         profile["innovation_type"] = st.selectbox("Innovation type", ["", "Tech", "Non-tech", "Hybrid"], index=["", "Tech", "Non-tech", "Hybrid"].index(profile.get("innovation_type", "") if profile.get("innovation_type", "") in ["", "Tech", "Non-tech", "Hybrid"] else ""))
