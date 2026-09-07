@@ -43,7 +43,7 @@ def read_matrix(file) -> dict[str, pd.DataFrame]:
 
 
 @st.cache_data(show_spinner=False)
-def load_default():
+def load_default(display_terms_version="mandatory-v1"):
     if DEFAULT_BOOK.exists():
         return read_matrix(DEFAULT_BOOK)
     return read_matrix(BytesIO(base64.b64decode(EMBEDDED_BOOK.read_text())))
