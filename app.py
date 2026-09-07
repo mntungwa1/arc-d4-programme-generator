@@ -148,6 +148,16 @@ with st.sidebar:
                 st.success("Account created. Confirm the email, then return here and sign in.")
             except Exception as exc:
                 st.error(f"Account creation failed: {exc}")
+        if st.button("Resend confirmation email") and auth_email:
+            try:
+                shared_client().auth.resend({
+                    "type": "signup",
+                    "email": auth_email,
+                    "options": {"email_redirect_to": APP_URL},
+                })
+                st.success("A new confirmation email has been sent to the live app address.")
+            except Exception as exc:
+                st.error(f"Could not resend the confirmation email: {exc}")
     else:
         if st.button("Sign out"):
             del st.session_state.d4_auth_session
