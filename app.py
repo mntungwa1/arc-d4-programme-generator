@@ -21,6 +21,7 @@ EMBEDDED_BOOK = Path(__file__).parent / "ARC_D4_Automation_Matrix.b64"
 SUPABASE_URL = "https://wrejrxzgyuxsfbxutezg.supabase.co"
 SUPABASE_KEY = "sb_publishable_UfYoG2ZgKP0nLA5KGwEG6w_2rCP9_R8"
 APP_URL = "https://arc-d4-programme-generator-c7qdwgesqvnwjafgvpxgat.streamlit.app/"
+ADMIN_EMAILS = {"dingaan@academyrc.co.za", "drcliff@academyrc.co.za"}
 
 
 def shared_client():
@@ -138,16 +139,26 @@ with st.sidebar:
                 st.rerun()
             except Exception as exc:
                 st.error(f"Sign-in failed: {exc}")
-        if sign_up.button("Create account") and auth_email and auth_password:
+        if sign_up.button("Create approved account") and auth_email and auth_password:
             try:
-                shared_client().auth.sign_up({
-                    "email": auth_email,
-                    "password": auth_password,
-                    "options": {"email_redirect_to": APP_URL},
-                })
-                st.success("Account created. Confirm the email, then return here and sign in.")
+                approved = shared_client().rpc("d4_is_email_authorised", {"candidate_email": auth_email.strip().lower()}).execute().data
+                if not approved:
+                    st.error("Access has not yet been approved. Use Request access; Dingaan Mahlangu or Dr Cliff Ferguson must approve the email before an account can be created.")
+                else:
+                    shared_client().auth.sign_up({
+                        "email": auth_email,
+                        "password": auth_password,
+                        "options": {"email_redirect_to": APP_URL},
+                    })
+                    st.success("Approved account created. Confirm the email, then return here and sign in.")
             except Exception as exc:
                 st.error(f"Account creation failed: {exc}")
+        if st.button("Request access") and auth_email:
+            try:
+                shared_client().rpc("d4_request_access", {"candidate_email": auth_email.strip().lower()}).execute()
+                st.success("Access request sent. An administrator must approve it before you create and confirm your account.")
+            except Exception as exc:
+                st.error(f"Could not submit the access request: {exc}")
         if st.button("Resend confirmation email") and auth_email:
             try:
                 shared_client().auth.resend({
@@ -162,6 +173,52 @@ with st.sidebar:
         if st.button("Sign out"):
             del st.session_state.d4_auth_session
             st.rerun()
+
+if "d4_auth_session" in st.session_state:
+    try:
+        access_client = shared_client()
+        current_user = access_client.auth.get_user().user
+        current_email = (current_user.email or "").lower()
+        d4_authorised = bool(access_client.rpc("d4_is_current_user_authorised").execute().data)
+        if current_email in ADMIN_EMAILS:
+            with st.sidebar:
+                st.divider()
+                st.subheader("Account approvals")
+                direct_email = st.text_input("Approve an email directly", key="direct_approval_email")
+                if st.button("Approve email") and direct_email:
+                    try:
+                        access_client.table("d4_access_allowlist").insert({
+                            "email": direct_email.strip().lower(), "approved_by": current_user.id,
+                        }).execute()
+                        st.success(f"Approved: {direct_email.strip().lower()}")
+                    except Exception as exc:
+                        st.error(f"Could not approve the email: {exc}")
+                pending = access_client.table("d4_access_requests").select("id,email,requested_at").eq("status", "Pending").order("requested_at").execute().data or []
+                if pending:
+                    st.caption("Pending requests")
+                    for request in pending:
+                        st.write(request["email"])
+                        if st.button("Approve request", key=f"approve_{request['id']}"):
+                            try:
+                                access_client.table("d4_access_allowlist").insert({
+                                    "email": request["email"], "approved_by": current_user.id,
+                                }).execute()
+                                access_client.table("d4_access_requests").update({
+                                    "status": "Approved", "decided_by": current_user.id,
+                                    "decided_at": datetime.now(timezone.utc).isoformat(),
+                                }).eq("id", request["id"]).execute()
+                                st.success(f"Approved: {request['email']}")
+                                st.rerun()
+                            except Exception as exc:
+                                st.error(f"Could not approve request: {exc}")
+                else:
+                    st.caption("No pending access requests.")
+        if not d4_authorised:
+            st.error("Your account is awaiting approval. Dingaan Mahlangu or Dr Cliff Ferguson must approve this email before you can access the shared D4 register.")
+            st.stop()
+    except Exception as exc:
+        st.error(f"Could not verify account approval: {exc}")
+        st.stop()
 
 try:
     if upload:
