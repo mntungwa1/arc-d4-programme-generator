@@ -155,7 +155,9 @@ with st.sidebar:
                 st.error(f"Account creation failed: {exc}")
         if st.button("Request access") and auth_email:
             try:
-                shared_client().rpc("d4_request_access", {"candidate_email": auth_email.strip().lower()}).execute()
+                shared_client().table("d4_access_requests").insert({
+                    "email": auth_email.strip().lower(), "status": "Pending"
+                }).execute()
                 st.success("Access request sent. An administrator must approve it before you create and confirm your account.")
             except Exception as exc:
                 st.error(f"Could not submit the access request: {exc}")
