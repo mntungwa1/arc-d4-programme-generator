@@ -103,7 +103,7 @@ def read_matrix(source) -> dict[str, pd.DataFrame]:
 
 
 @st.cache_data(show_spinner=False)
-def default_matrix(cache_version="matrix-v3.7-d2-d3-provisional-schedule-1"):
+def default_matrix(cache_version="matrix-v3.8-complete-delivery-handover-1"):
     # cache_version deliberately changes whenever the matrix parser changes.
     # Streamlit otherwise retains a previously mis-parsed workbook across deploys.
     return read_matrix(BytesIO(base64.b64decode(BOOK.read_text())))
@@ -375,7 +375,7 @@ def show_correction_callout(matrix, profile, title="What needs to be done"):
         st.success("The visible working record is complete enough for the current checks. Continue to the next stage and its product-specific gate.")
         return
     with st.container(border=True):
-        st.warning(f"{title}: {len(actions)} open item(s).")
+        st.info(f"{title}: {len(actions)} completion prompt(s).")
         for index, action in enumerate(actions[:6], start=1):
             st.markdown(f"**{index}. {action['Aspect']}**  ")
             st.write(action["What needs correction"])
@@ -435,7 +435,7 @@ def show_product_readiness_callout(matrix):
             if submission.lower() == "ready":
                 right.success("Submission: Ready")
             else:
-                right.warning(f"Submission: {submission or 'Awaiting readiness assessment'}")
+                right.info(f"Submission: {submission or 'Awaiting readiness assessment'}")
             if waiting_on and waiting_on != "—":
                 st.caption(f"Waiting on: {waiting_on}")
             if not fact_ids:
@@ -464,7 +464,7 @@ def show_product_readiness_callout(matrix):
                     st.caption(f"Accountable route: {owner}")
                 lead = SOLUTION_LEADS.get(fact_ids[number - 1]) if number <= len(fact_ids) else None
                 if lead:
-                    st.error(
+                    st.info(
                         f"**Where the solution may be found:** {lead['where']}  \n"
                         f"**Possible website address:** [{lead['url']}]({lead['url']})  \n\n"
                         "**Warning:** this is a routing lead only. Do not treat the website as evidence, "
@@ -500,7 +500,7 @@ signed_in = approval_controls()
 
 try:
     uploaded = st.sidebar.file_uploader("Replace the governed automation matrix", type="xlsx")
-    matrix = read_matrix(uploaded) if uploaded else default_matrix("matrix-v3.7-d2-d3-provisional-schedule-1")
+    matrix = read_matrix(uploaded) if uploaded else default_matrix("matrix-v3.8-complete-delivery-handover-1")
 except Exception as exc:
     st.error(f"The automation matrix could not be read: {exc}")
     st.stop()
