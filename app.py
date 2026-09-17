@@ -73,7 +73,7 @@ def read_matrix(source) -> dict[str, pd.DataFrame]:
     tables = {}
     markers = {
         "Stage ID", "Step ID", "Rule ID", "Field ID", "#", "Template ID", "Check ID",
-        "Set ID", "ID", "Product", "Symbol", "Template",
+        "Set ID", "ID", "Product", "Symbol", "Template", "Fact",
     }
     for name in workbook.sheet_names:
         raw = pd.read_excel(workbook, sheet_name=name, header=None)
