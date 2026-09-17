@@ -25,30 +25,37 @@ D2_PRODUCT_READINESS = {
     "P1": {
         "evidence": "A validated portfolio must carry evidence grade, operational maturity, pillar and country coverage, plus a defensible concentration position.",
         "ready_when": "All outstanding index determinations are resolved and the portfolio can show that its selected innovations are evidence-supported, balanced across the five pillars and not concentrated in a single maturity or country profile.",
+        "d3_final_gate": "D3 final line: the validated Annex H score, tier and evidence-confidence record must be linked to the Gap Register. The programme document can proceed only when the selected portfolio demonstrably closes the priority gaps and every unresolved critical feasibility condition has moved to the institutionalisation track or has a named resolution route.",
     },
     "P2": {
         "evidence": "Each innovation needs triangulated evidence, operational maturity, an accountable institution, delivery partners, lifecycle costs, safeguards and a sustainability route.",
         "ready_when": "The recurrent-cost custodian is named and the profile can demonstrate operational feasibility, SHOC or delivery interoperability, inclusion safeguards and an investment-ready costed pathway.",
+        "d3_final_gate": "D3 final line: complete the Investment-Ready Innovation Profile with its quantified problem, implementation milestones, cost-benefit basis, delivery and recurrent-cost arrangements, Sendai contribution and recorded inclusion-audit result. No unresolved critical feasibility condition may remain in the operating pathway.",
     },
     "P3": {
         "evidence": "D2 requires structured Member State, SHOC and stakeholder validation, with comments and decisions recorded rather than inferred.",
         "ready_when": "The session plan, feedback instrument and input-routing schedule identify the correct D2 evidence question, the decision-maker and the route for resolving every response.",
+        "d3_final_gate": "D3 final line: each challenge to a criterion determination, ranking, tier composition or gap-opportunity pairing must have a recorded decision in the comment-resolution log. Member States must retain their acceptance or objection right for innovations operating in their jurisdictions.",
     },
     "P4": {
         "evidence": "The summary must distinguish documented evidence from emerging claims and show the maturity, opportunity and delivery implication of the selected portfolio.",
         "ready_when": "The portfolio economic summary is complete and every headline claim can be traced to a scored, evidence-graded innovation or a clearly identified outstanding work item.",
+        "d3_final_gate": "D3 final line: include only figures supported by the validated matrix, gap register and results framework. State the intended Sendai contribution, the evidence-confidence position and the remaining work item wherever a quantified financing or outcome claim is not yet supported.",
     },
     "P5": {
         "evidence": "D2 treats national ownership as an operating condition: a policy step, budget line, institutional custodian, legal basis and Member State decision right must be explicit.",
         "ready_when": "The national provision and named custodian are confirmed through the Member State route, with the policy, legal and budget actions recorded against an agreed timeline.",
+        "d3_final_gate": "D3 final line: record the governing instrument, named custodian, budget/staffing requirement and Member State adoption-or-decline decision. The plan must show reciprocal benefit, an implementation sequence and escalation where a gating instrument has not been adopted.",
     },
     "P6": {
         "evidence": "A usable warning and communication plan must show trusted local institutions, language and cultural suitability, accessibility, safeguarding, feedback and non-digital continuity.",
         "ready_when": "The media engagement has returned the language, channel, attribution and feedback arrangements, and the plan shows how the warning reaches excluded or offline groups.",
+        "d3_final_gate": "D3 final line: attach the inclusion-audit result, the responsible operator or delivery arrangement, data/consent conditions where relevant, continuity arrangements and the indicator for household-level protective action. A channel without an accountable delivery path is not ready.",
     },
     "P7": {
         "evidence": "Implementation requires a valid mandate, legal authority, responsible institution, practical operating model, lifecycle funding and measurable accountability.",
         "ready_when": "The outstanding national provision is confirmed and the mandate, legal, delivery, recurrent-cost and measurement arrangements form one implementable Member State pathway.",
+        "d3_final_gate": "D3 final line: before first disbursement, the operating description and institutional arrangement must identify what operates, dependencies, annual recurrent cost, custodian, budget line, staffing and governing agreements. The implementation plan must carry the risk register, results record and replication requirements.",
     },
 }
 
@@ -383,6 +390,8 @@ def show_product_readiness_callout(products):
                 st.markdown("**D2 evidence that must be in place**")
                 st.write(d2["evidence"])
                 st.success("Ready when: " + d2["ready_when"])
+                st.markdown("**D3 final readiness line**")
+                st.write(d2["d3_final_gate"])
 
 
 auth_sidebar()
