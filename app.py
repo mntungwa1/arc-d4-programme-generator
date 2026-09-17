@@ -86,7 +86,7 @@ def read_matrix(source) -> dict[str, pd.DataFrame]:
 
 
 @st.cache_data(show_spinner=False)
-def default_matrix(cache_version="matrix-v3.2-visible-callouts-1"):
+def default_matrix(cache_version="matrix-v3.3-readiness-board-1"):
     # cache_version deliberately changes whenever the matrix parser changes.
     # Streamlit otherwise retains a previously mis-parsed workbook across deploys.
     return read_matrix(BytesIO(base64.b64decode(BOOK.read_text())))
@@ -368,49 +368,86 @@ def show_correction_callout(matrix, profile, title="What needs to be done"):
             st.dataframe(pd.DataFrame(actions[6:]), hide_index=True, use_container_width=True, height=240)
 
 
-def show_product_readiness_callout(products):
-    if products.empty or "Readiness" not in products.columns:
+def readiness_board(matrix):
+    board = table(matrix, "41_Readiness_Board")
+    if board.empty or "Product" not in board.columns:
+        return pd.DataFrame()
+    return board.loc[board["Product"].notna()].copy()
+
+
+def show_product_readiness_callout(matrix):
+    """Show v3.3 tier-aware readiness, driven by distinct outstanding facts."""
+    board = readiness_board(matrix)
+    facts = table(matrix, "40_Outstanding_Facts")
+    if board.empty:
         return
-    outstanding = products.loc[products["Readiness"].astype(str).str.upper().str.startswith("NOT READY")].copy()
-    if outstanding.empty:
-        st.success("All configured submission-tier products are ready.")
-        return
-    st.warning(f"{len(outstanding)} product(s) are not ready for submission-tier generation. Complete the action shown for each product.")
-    for _, product in outstanding.iterrows():
+    fact_lookup = {}
+    if not facts.empty and "Fact" in facts.columns:
+        fact_lookup = {clean(row["Fact"]): row for _, row in facts.iterrows() if clean(row["Fact"])}
+    produced = int(board.get("Produced at working draft (enter date)", pd.Series(dtype=str)).notna().sum())
+    submission_ready = int(board.get("Submission", pd.Series(dtype=str)).astype(str).str.strip().str.lower().eq("ready").sum())
+    st.info(
+        f"Readiness board: {produced} of {len(board)} products have a working draft; "
+        f"{submission_ready} of {len(board)} are ready for submission. "
+        "A product waiting for evidence is not treated as an unfinished draft."
+    )
+    display_columns = [column for column in [
+        "Product", "Name", "Working draft", "Blocking fact 1", "Blocking fact 2", "Submission", "Who we are waiting on"
+    ] if column in board.columns]
+    st.dataframe(board[display_columns], hide_index=True, use_container_width=True)
+    for _, product in board.iterrows():
         product_id = clean(product.get("Product"))
         d2 = D2_PRODUCT_READINESS.get(product_id, {})
         product_name = clean(product.get("Name"))
-        blocker = clean(product.get("Blocking fields and how they resolve"))
-        resolver = clean(product.get("Resolver"))
+        working_draft = clean(product.get("Working draft"))
+        submission = clean(product.get("Submission"))
+        fact_ids = [clean(product.get(column)) for column in ["Blocking fact 1", "Blocking fact 2"]]
+        fact_ids = [fact_id for fact_id in fact_ids if fact_id]
+        waiting_on = clean(product.get("Who we are waiting on"))
         with st.container(border=True):
-            st.error(f"{product_id} — {product_name}: {clean(product.get('Readiness'))}")
-            st.markdown("**What will make this product ready**")
-            st.write(blocker)
-            if resolver and resolver != "—":
-                st.caption(f"Complete through: {resolver}")
+            st.markdown(f"### {product_id} — {product_name}")
+            left, right = st.columns(2)
+            left.success(f"Working draft: {working_draft or 'Ready to produce'}")
+            if submission.lower() == "ready":
+                right.success("Submission: Ready")
+            else:
+                right.warning(f"Submission: {submission or 'Awaiting readiness assessment'}")
+            if waiting_on and waiting_on != "—":
+                st.caption(f"Waiting on: {waiting_on}")
+            if not fact_ids:
+                st.success("No open submission facts are recorded for this product.")
+                continue
+            st.markdown("**Facts to close for submission**")
+            checklist = []
+            for fact_id in fact_ids:
+                fact = fact_lookup.get(fact_id)
+                if fact is None:
+                    checklist.append((f"Close {fact_id}", "Locate and resolve the referenced outstanding fact in the governed matrix.", ""))
+                else:
+                    checklist.append((
+                        f"{fact_id}: {clean(fact.get('What is missing'))}",
+                        f"Event that produces it: {clean(fact.get('Event that produces it'))}",
+                        clean(fact.get("Who holds it")),
+                    ))
+            checklist.append(("Record final verification", "Update the Outstanding Facts status and the governed decision record, then verify the submission status on the Readiness Board.", waiting_on))
+            completed = 0
+            for number, (action, detail, owner) in enumerate(checklist, start=1):
+                key = f"readiness_{product_id}_{number}"
+                if st.checkbox(f"{number}. {action}", key=key):
+                    completed += 1
+                st.caption(detail)
+                if owner and owner != "—":
+                    st.caption(f"Accountable route: {owner}")
             if d2:
                 st.markdown("**D2 evidence that must be in place**")
                 st.write(d2["evidence"])
                 st.markdown("**D3 final readiness line**")
                 st.write(d2["d3_final_gate"])
-            st.markdown("**Resolve this item**")
-            checklist = [
-                ("Close the matrix blocker", blocker or "Record and resolve the outstanding matrix field."),
-                ("Attach or cite D2 evidence", d2.get("evidence", "Provide the required evidence and a verification reference.")),
-                ("Close the D3 delivery gate", d2.get("d3_final_gate", "Record the D3 validation, feasibility and implementation decision.")),
-                ("Obtain final verification", "Have the accountable owner confirm that the governed matrix and supporting record have been updated."),
-            ]
-            completed = 0
-            for number, (action, detail) in enumerate(checklist, start=1):
-                key = f"readiness_{product_id}_{number}"
-                if st.checkbox(f"{number}. {action}", key=key):
-                    completed += 1
-                st.caption(detail)
             owner_col, due_col = st.columns(2)
             with owner_col:
                 st.text_input(
                     "Accountable owner / route",
-                    value="" if resolver in {"", "—"} else resolver,
+                    value="" if waiting_on in {"", "—"} else waiting_on,
                     key=f"readiness_owner_{product_id}",
                 )
             with due_col:
@@ -422,8 +459,8 @@ def show_product_readiness_callout(products):
             )
             st.progress(completed / len(checklist), text=f"Closure checklist: {completed} of {len(checklist)} actions completed")
             if d2:
-                st.success("Ready when: " + d2["ready_when"])
-            st.info("Completing this checklist prepares the product for verification; it does not override the governed matrix readiness status. Final verification must be recorded in the source matrix and decision record.")
+                st.success("Ready for submission when: " + d2["ready_when"])
+            st.info("Completing this checklist prepares the product for verification. The analyst must close the fact in the governed matrix; the Readiness Board then updates the final submission status.")
 
 
 auth_sidebar()
@@ -431,7 +468,7 @@ signed_in = approval_controls()
 
 try:
     uploaded = st.sidebar.file_uploader("Replace the governed automation matrix", type="xlsx")
-    matrix = read_matrix(uploaded) if uploaded else default_matrix("matrix-v3.2-visible-callouts-1")
+    matrix = read_matrix(uploaded) if uploaded else default_matrix("matrix-v3.3-readiness-board-1")
 except Exception as exc:
     st.error(f"The automation matrix could not be read: {exc}")
     st.stop()
@@ -470,12 +507,12 @@ show_correction_callout(matrix, profile, "Selected innovation: open actions")
 
 if workspace == "Programme command":
     stages = table(matrix, "01_Stages")
-    products = table(matrix, "32_Product_Readiness")
+    products = readiness_board(matrix)
     pending = portfolio[portfolio["IPI v2.0 (computed)"].astype(str).str.upper().eq("PENDING")].shape[0]
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Portfolio records", len(portfolio))
     c2.metric("IPI determinations pending", pending)
-    c3.metric("Product packs ready", int(products["Readiness"].astype(str).str.startswith("READY").sum()))
+    c3.metric("Ready for submission", int(products.get("Submission", pd.Series(dtype=str)).astype(str).str.strip().str.lower().eq("ready").sum()))
     c4.metric("Current selection", selected_name[:22] + ("…" if len(selected_name) > 22 else ""))
     st.subheader("Programme pathway")
     stream, current = st.columns([3, 1], gap="large")
@@ -491,8 +528,7 @@ if workspace == "Programme command":
     with current:
         selected_stage_panel(matrix, st.session_state.selected_stage, profile)
     st.subheader("Product readiness")
-    st.dataframe(products[["Product", "Name", "Readiness"]], hide_index=True, use_container_width=True)
-    show_product_readiness_callout(products)
+    show_product_readiness_callout(matrix)
 
 elif workspace == "Workstream C — portfolio admission":
     st.subheader("Workstream C — portfolio admission")
@@ -567,11 +603,10 @@ elif workspace == "Research and verification":
 else:
     st.subheader("Products and readiness")
     st.caption("No product leaves the platform with an unexplained absence. A missing field becomes a work item, or a named, time-limited waiver; it is never silently drafted around.")
-    products = table(matrix, "32_Product_Readiness")
+    products = readiness_board(matrix)
     product, detail = st.columns([3, 1], gap="large")
     with product:
-        st.dataframe(products, hide_index=True, use_container_width=True)
-        show_product_readiness_callout(products)
+        show_product_readiness_callout(matrix)
         st.subheader("Product sets")
         st.dataframe(table(matrix, "11_Output_Products"), hide_index=True, use_container_width=True)
         st.subheader("Pre-generation gate for selected innovation")
