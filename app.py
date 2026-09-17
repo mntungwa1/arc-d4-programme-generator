@@ -230,6 +230,7 @@ def profile_form(matrix, profile, name_key, allow_save):
                 st.success("Innovation admitted. It is now available to Workstream D.")
             except Exception as exc:
                 st.error(f"Could not admit innovation: {exc}")
+    show_correction_callout(matrix, profile, "Profile completion actions")
 
 
 def readiness(matrix, profile):
@@ -243,6 +244,53 @@ def readiness(matrix, profile):
     if absent:
         failures.append("V01 — incomplete profile components: " + ", ".join(absent))
     return failures
+
+
+def correction_actions(matrix, profile):
+    """Translate incomplete fields into owned, usable corrective actions."""
+    actions = []
+    field_actions = {
+        "innovation_name": ("Innovation name", "Enter the official, unambiguous name used in the source inventory.", "R1 — source binding"),
+        "description": ("Innovation description", "Add what the innovation does, its intended users and the DRM function it supports.", "R1 — source binding"),
+        "innovation_type": ("Innovation type", "Classify it as Tech, Non-tech or Hybrid. For Hybrid, identify both technical and institutional elements.", "R1 — source binding"),
+        "lead_institution": ("Lead institution", "Name the institution accountable for the innovation. A regional proposition cannot proceed without a named lead.", "R1 — source binding"),
+        "delivery_counterpart": ("Delivery counterpart", "Name the organisation that will deliver the intervention to its intended users.", "R2 — analyst confirmation"),
+        "recurrent_cost_custodian": ("Recurrent-cost custodian", "Obtain the named post or institution responsible for recurring costs. Escalate to the Member State focal point if unknown.", "R4 — owner escalation"),
+        "phase": ("Programme phase", "Assign Phase 1, 2 or 3 using the D3 sequencing rule and record the prerequisite that makes the phase possible.", "R2 — analyst confirmation"),
+        "mandate_level": ("Mandate level", "Choose Regional, National or Last-mile and record the mandate basis where the level is Regional.", "R3 — mandate register"),
+        "selected_window": ("Investment route", "Select the financing route that matches the public, commercial or blended financing case.", "R3 — investment-route register"),
+    }
+    for field, detail in field_actions.items():
+        if not yes(profile.get(field)):
+            actions.append({"Aspect": detail[0], "What needs correction": detail[1], "Resolver / owner": detail[2]})
+    for _, component in table(matrix, "07_IRIP_Components").iterrows():
+        number = clean(component["#"])
+        if not yes(profile.get(f"irip_{number}")):
+            actions.append({
+                "Aspect": f"Profile component {number}",
+                "What needs correction": f"Complete: {clean(component['Component'])}. Use the governed source or research route only where the matrix permits it.",
+                "Resolver / owner": "R1 / Research Broker" if clean(component["Research break-out available"]).lower() == "yes" else "R4 — owner escalation",
+            })
+    criteria = table(matrix, "05_IPI_Criteria")
+    if not criteria.empty and "Symbol" in criteria.columns:
+        pending = [clean(row["Symbol"]) for _, row in criteria.iterrows() if float(profile.get(f"score_{clean(row['Symbol'])}", 0) or 0) <= 0]
+        if pending:
+            actions.append({
+                "Aspect": "Innovation Priority Index determinations",
+                "What needs correction": "Record a supported 0–10 determination for: " + ", ".join(pending) + ". A zero is valid only where the evidence explicitly supports absence.",
+                "Resolver / owner": "R4 — determination session",
+            })
+    return actions
+
+
+def show_correction_callout(matrix, profile, title="What needs to be done"):
+    actions = correction_actions(matrix, profile)
+    if not actions:
+        st.success("The visible working record is complete enough for the current checks. Continue to the next stage and its product-specific gate.")
+        return
+    st.warning(f"{title}: {len(actions)} item(s) require action before this record is ready.")
+    with st.expander("View corrective actions", expanded=True):
+        st.dataframe(pd.DataFrame(actions), hide_index=True, use_container_width=True)
 
 
 auth_sidebar()
@@ -345,6 +393,7 @@ elif workspace == "Workstream D — innovation delivery":
         st.dataframe(pd.DataFrame({"Open work item": problems, "Resolver": ["R4 — owner escalation"] * len(problems)}), hide_index=True, use_container_width=True)
     else:
         st.success("The visible innovation profile passes the current pre-generation checks.")
+    show_correction_callout(matrix, profile, "Actions to make this innovation ready")
 
 elif workspace == "Research and verification":
     st.subheader("Research broker and verification gate")
@@ -382,6 +431,7 @@ else:
                 st.error(failure)
         else:
             st.success("The selected working record can proceed to product generation once its relevant product readiness conditions are met.")
+        show_correction_callout(matrix, profile, "Actions before generation")
     with detail:
         selected_stage_panel(matrix, st.session_state.selected_stage, profile)
         st.divider()
