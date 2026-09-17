@@ -103,7 +103,7 @@ def read_matrix(source) -> dict[str, pd.DataFrame]:
 
 
 @st.cache_data(show_spinner=False)
-def default_matrix(cache_version="matrix-v3.5-three-tier-readiness-1"):
+def default_matrix(cache_version="matrix-v3.7-d2-d3-provisional-schedule-1"):
     # cache_version deliberately changes whenever the matrix parser changes.
     # Streamlit otherwise retains a previously mis-parsed workbook across deploys.
     return read_matrix(BytesIO(base64.b64decode(BOOK.read_text())))
@@ -423,6 +423,10 @@ def show_product_readiness_callout(matrix):
         submission = clean(product.get("Submission"))
         fact_ids = [clean(product.get(column)) for column in ["Fact 1", "Fact 2"]]
         fact_ids = [fact_id for fact_id in fact_ids if fact_id]
+        fact_ids = [
+            fact_id for fact_id in fact_ids
+            if clean(fact_lookup.get(fact_id, {}).get("Status")).lower() == "open"
+        ]
         waiting_on = clean(product.get("Who we are waiting on"))
         with st.container(border=True):
             st.markdown(f"### {product_id} — {product_name}")
@@ -496,7 +500,7 @@ signed_in = approval_controls()
 
 try:
     uploaded = st.sidebar.file_uploader("Replace the governed automation matrix", type="xlsx")
-    matrix = read_matrix(uploaded) if uploaded else default_matrix("matrix-v3.5-three-tier-readiness-1")
+    matrix = read_matrix(uploaded) if uploaded else default_matrix("matrix-v3.7-d2-d3-provisional-schedule-1")
 except Exception as exc:
     st.error(f"The automation matrix could not be read: {exc}")
     st.stop()
