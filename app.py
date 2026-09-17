@@ -45,7 +45,7 @@ def read_matrix(source) -> dict[str, pd.DataFrame]:
 
 
 @st.cache_data(show_spinner=False)
-def default_matrix(cache_version="matrix-v3.1-headerfix-2"):
+def default_matrix(cache_version="matrix-v3.2-visible-callouts-1"):
     # cache_version deliberately changes whenever the matrix parser changes.
     # Streamlit otherwise retains a previously mis-parsed workbook across deploys.
     return read_matrix(BytesIO(base64.b64decode(BOOK.read_text())))
@@ -94,6 +94,23 @@ def selected_stage_panel(matrix, stage_id, profile):
         st.markdown("**Actions at this stage**")
         for _, action in actions.iterrows():
             st.caption(f"{clean(action['Step ID'])} — {clean(action['Step description'])}")
+
+
+def show_stage_callout(matrix, stage_id):
+    """Keep the selected stage's completion rule visible beside the pathway."""
+    stages = table(matrix, "01_Stages")
+    if stages.empty or "Stage ID" not in stages.columns:
+        return
+    matches = stages.loc[stages["Stage ID"].astype(str) == str(stage_id)]
+    if matches.empty:
+        return
+    stage = matches.iloc[0]
+    with st.container(border=True):
+        st.markdown(f"**Current stage: {clean(stage['Stage ID'])} — {clean(stage['Stage name'])}**")
+        st.warning(f"To complete this stage: {clean(stage['Exit condition'])}")
+        accountable = clean(stage.get("Accountable", ""))
+        if accountable:
+            st.caption(f"Accountable: {accountable}")
 
 
 def auth_sidebar():
@@ -175,6 +192,7 @@ def approval_controls():
 def profile_form(matrix, profile, name_key, allow_save):
     st.subheader("Investment-ready innovation profile")
     st.caption("This is the governed working record. It creates owned work instead of hiding an unresolved requirement.")
+    show_correction_callout(matrix, profile, "Complete these items as you build the profile")
     left, right = st.columns(2)
     with left:
         profile["innovation_name"] = st.text_input("Innovation name *", profile.get("innovation_name", ""), key=f"{name_key}_name")
@@ -206,10 +224,20 @@ def profile_form(matrix, profile, name_key, allow_save):
         code = clean(criterion["Symbol"])
         weight = float(criterion["Weight"])
         with score_cols[index % 4]:
-            score = st.number_input(f"{code} (0–10)", 0.0, 10.0, float(profile.get(f"score_{code}", 0.0)), 0.5, key=f"{name_key}_{code}")
+            existing = profile.get(f"score_{code}")
+            existing = None if not yes(existing) else float(existing)
+            options = [None] + [float(value) for value in range(0, 11)]
+            score = st.selectbox(
+                f"{code} (0–10)", options,
+                index=options.index(existing) if existing in options else 0,
+                format_func=lambda value: "Not assessed" if value is None else f"{value:.0f}",
+                key=f"{name_key}_{code}",
+            )
         profile[f"score_{code}"] = score
-        weighted += score * weight
-        complete = complete and score > 0
+        if score is None:
+            complete = False
+        else:
+            weighted += score * weight
     profile["ipi"] = round(weighted, 2)
     st.metric("Innovation Priority Index", f"{profile['ipi']:.2f} / 10", "Pending determinations" if not complete else "All determinations entered")
     if allow_save and st.button("Admit innovation to shared portfolio", type="primary"):
@@ -230,7 +258,7 @@ def profile_form(matrix, profile, name_key, allow_save):
                 st.success("Innovation admitted. It is now available to Workstream D.")
             except Exception as exc:
                 st.error(f"Could not admit innovation: {exc}")
-    show_correction_callout(matrix, profile, "Profile completion actions")
+    show_correction_callout(matrix, profile, "Remaining profile actions")
 
 
 def readiness(matrix, profile):
@@ -273,7 +301,7 @@ def correction_actions(matrix, profile):
             })
     criteria = table(matrix, "05_IPI_Criteria")
     if not criteria.empty and "Symbol" in criteria.columns:
-        pending = [clean(row["Symbol"]) for _, row in criteria.iterrows() if float(profile.get(f"score_{clean(row['Symbol'])}", 0) or 0) <= 0]
+        pending = [clean(row["Symbol"]) for _, row in criteria.iterrows() if not yes(profile.get(f"score_{clean(row['Symbol'])}"))]
         if pending:
             actions.append({
                 "Aspect": "Innovation Priority Index determinations",
@@ -288,9 +316,15 @@ def show_correction_callout(matrix, profile, title="What needs to be done"):
     if not actions:
         st.success("The visible working record is complete enough for the current checks. Continue to the next stage and its product-specific gate.")
         return
-    st.warning(f"{title}: {len(actions)} item(s) require action before this record is ready.")
-    with st.expander("View corrective actions", expanded=True):
-        st.dataframe(pd.DataFrame(actions), hide_index=True, use_container_width=True)
+    with st.container(border=True):
+        st.warning(f"{title}: {len(actions)} open item(s).")
+        for index, action in enumerate(actions[:6], start=1):
+            st.markdown(f"**{index}. {action['Aspect']}**  ")
+            st.write(action["What needs correction"])
+            st.caption(f"Resolver: {action['Resolver / owner']}")
+        if len(actions) > 6:
+            st.info(f"{len(actions) - 6} further open item(s) are listed below.")
+            st.dataframe(pd.DataFrame(actions[6:]), hide_index=True, use_container_width=True, height=240)
 
 
 def show_product_readiness_callout(products):
@@ -302,8 +336,7 @@ def show_product_readiness_callout(products):
         return
     st.warning(f"Product delivery attention: {len(outstanding)} product(s) are not ready to generate.")
     columns = [column for column in ["Product", "Name", "Blocking fields and how they resolve", "Resolver", "Readiness"] if column in outstanding.columns]
-    with st.expander("View product-specific actions", expanded=False):
-        st.dataframe(outstanding[columns], hide_index=True, use_container_width=True)
+    st.dataframe(outstanding[columns], hide_index=True, use_container_width=True, height=min(420, 76 + 42 * len(outstanding)))
 
 
 auth_sidebar()
@@ -311,7 +344,7 @@ signed_in = approval_controls()
 
 try:
     uploaded = st.sidebar.file_uploader("Replace the governed automation matrix", type="xlsx")
-    matrix = read_matrix(uploaded) if uploaded else default_matrix("matrix-v3.1-headerfix-2")
+    matrix = read_matrix(uploaded) if uploaded else default_matrix("matrix-v3.2-visible-callouts-1")
 except Exception as exc:
     st.error(f"The automation matrix could not be read: {exc}")
     st.stop()
@@ -334,10 +367,19 @@ profile = dict(saved.get("d3_profile") or {})
 profile.setdefault("innovation_name", selected_name)
 profile.setdefault("innovation_url", saved.get("innovation_url", ""))
 profile.setdefault("innovation_type", saved.get("innovation_type", ""))
+selected_portfolio = portfolio.loc[portfolio["Innovation"].astype(str) == selected_name]
+if not selected_portfolio.empty:
+    source_scores = selected_portfolio.iloc[0]
+    for symbol in table(matrix, "05_IPI_Criteria").get("Symbol", pd.Series(dtype=str)).dropna().astype(str):
+        source_value = source_scores.get(symbol)
+        if pd.notna(source_value) and yes(source_value):
+            profile.setdefault(f"score_{symbol}", float(source_value))
 
 st.title("ARC D4 Delivery Platform")
 st.caption("A controlled programme record that routes a portfolio innovation through admission, appraisal, verification, generation and product readiness.")
 workspace = st.radio("Workspace", ["Programme command", "Workstream C — portfolio admission", "Workstream D — innovation delivery", "Research and verification", "Products and readiness"], horizontal=True)
+show_stage_callout(matrix, st.session_state.selected_stage)
+show_correction_callout(matrix, profile, "Selected innovation: open actions")
 
 if workspace == "Programme command":
     stages = table(matrix, "01_Stages")
