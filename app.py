@@ -103,7 +103,7 @@ def read_matrix(source) -> dict[str, pd.DataFrame]:
 
 
 @st.cache_data(show_spinner=False)
-def default_matrix(cache_version="matrix-v3.4-no-workshop-delivery-1"):
+def default_matrix(cache_version="matrix-v3.5-three-tier-readiness-1"):
     # cache_version deliberately changes whenever the matrix parser changes.
     # Streamlit otherwise retains a previously mis-parsed workbook across deploys.
     return read_matrix(BytesIO(base64.b64decode(BOOK.read_text())))
@@ -390,8 +390,6 @@ def readiness_board(matrix):
     if board.empty or "Product" not in board.columns:
         return pd.DataFrame()
     board = board.loc[board["Product"].notna()].copy()
-    if "Name" in board.columns:
-        board = board.loc[~board["Name"].astype(str).str.contains("excluded from automated programme delivery", case=False, na=False)]
     return board
 
 
@@ -404,15 +402,17 @@ def show_product_readiness_callout(matrix):
     fact_lookup = {}
     if not facts.empty and "Fact" in facts.columns:
         fact_lookup = {clean(row["Fact"]): row for _, row in facts.iterrows() if clean(row["Fact"])}
-    produced = int(board.get("Produced at working draft (enter date)", pd.Series(dtype=str)).notna().sum())
+    produced = int(board.get("Produced (enter date)", pd.Series(dtype=str)).notna().sum())
+    engagement_ready = int(board.get("VALIDATION-READY", pd.Series(dtype=str)).astype(str).str.contains("complete", case=False, na=False).sum())
     submission_ready = int(board.get("Submission", pd.Series(dtype=str)).astype(str).str.strip().str.lower().eq("ready").sum())
     st.info(
         f"Readiness board: {produced} of {len(board)} products have a working draft; "
+        f"{engagement_ready} of {len(board)} are ready for Member State engagement; "
         f"{submission_ready} of {len(board)} are ready for submission. "
         "A product waiting for evidence is not treated as an unfinished draft."
     )
     display_columns = [column for column in [
-        "Product", "Name", "Working draft", "Blocking fact 1", "Blocking fact 2", "Submission", "Who we are waiting on"
+        "Product", "Name", "Working draft", "Fact 1", "Fact 2", "VALIDATION-READY", "Submission", "Who we are waiting on"
     ] if column in board.columns]
     st.dataframe(board[display_columns], hide_index=True, use_container_width=True)
     for _, product in board.iterrows():
@@ -421,7 +421,7 @@ def show_product_readiness_callout(matrix):
         product_name = clean(product.get("Name"))
         working_draft = clean(product.get("Working draft"))
         submission = clean(product.get("Submission"))
-        fact_ids = [clean(product.get(column)) for column in ["Blocking fact 1", "Blocking fact 2"]]
+        fact_ids = [clean(product.get(column)) for column in ["Fact 1", "Fact 2"]]
         fact_ids = [fact_id for fact_id in fact_ids if fact_id]
         waiting_on = clean(product.get("Who we are waiting on"))
         with st.container(border=True):
@@ -496,7 +496,7 @@ signed_in = approval_controls()
 
 try:
     uploaded = st.sidebar.file_uploader("Replace the governed automation matrix", type="xlsx")
-    matrix = read_matrix(uploaded) if uploaded else default_matrix("matrix-v3.4-no-workshop-delivery-1")
+    matrix = read_matrix(uploaded) if uploaded else default_matrix("matrix-v3.5-three-tier-readiness-1")
 except Exception as exc:
     st.error(f"The automation matrix could not be read: {exc}")
     st.stop()
