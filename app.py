@@ -330,13 +330,19 @@ def show_correction_callout(matrix, profile, title="What needs to be done"):
 def show_product_readiness_callout(products):
     if products.empty or "Readiness" not in products.columns:
         return
-    outstanding = products.loc[~products["Readiness"].astype(str).str.upper().str.startswith("READY")].copy()
+    outstanding = products.loc[products["Readiness"].astype(str).str.upper().str.startswith("NOT READY")].copy()
     if outstanding.empty:
-        st.success("All configured products are ready.")
+        st.success("All configured submission-tier products are ready.")
         return
-    st.warning(f"Product delivery attention: {len(outstanding)} product(s) are not ready to generate.")
-    columns = [column for column in ["Product", "Name", "Blocking fields and how they resolve", "Resolver", "Readiness"] if column in outstanding.columns]
-    st.dataframe(outstanding[columns], hide_index=True, use_container_width=True, height=min(420, 76 + 42 * len(outstanding)))
+    st.warning(f"{len(outstanding)} product(s) are not ready for submission-tier generation. Complete the action shown for each product.")
+    for _, product in outstanding.iterrows():
+        with st.container(border=True):
+            st.error(f"{clean(product.get('Product'))} — {clean(product.get('Name'))}: {clean(product.get('Readiness'))}")
+            st.markdown("**What will make this product ready**")
+            st.write(clean(product.get("Blocking fields and how they resolve")))
+            resolver = clean(product.get("Resolver"))
+            if resolver and resolver != "—":
+                st.caption(f"Complete through: {resolver}")
 
 
 auth_sidebar()
