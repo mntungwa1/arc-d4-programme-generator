@@ -18,6 +18,40 @@ APP_URL = "https://arc-d4-programme-generator-c7qdwgesqvnwjafgvpxgat.streamlit.a
 ADMIN_EMAILS = {"dingaan@academyrc.co.za", "drcliff@academyrc.co.za"}
 BOOK = Path(__file__).parent / "ARC_D4_Automation_Matrix.b64"
 
+# D2 Innovation Landscape Assessment v3.1 readiness conditions.  These make
+# product readiness traceable to the landscape evidence rather than to a
+# generic completion status alone.
+D2_PRODUCT_READINESS = {
+    "P1": {
+        "evidence": "A validated portfolio must carry evidence grade, operational maturity, pillar and country coverage, plus a defensible concentration position.",
+        "ready_when": "All outstanding index determinations are resolved and the portfolio can show that its selected innovations are evidence-supported, balanced across the five pillars and not concentrated in a single maturity or country profile.",
+    },
+    "P2": {
+        "evidence": "Each innovation needs triangulated evidence, operational maturity, an accountable institution, delivery partners, lifecycle costs, safeguards and a sustainability route.",
+        "ready_when": "The recurrent-cost custodian is named and the profile can demonstrate operational feasibility, SHOC or delivery interoperability, inclusion safeguards and an investment-ready costed pathway.",
+    },
+    "P3": {
+        "evidence": "D2 requires structured Member State, SHOC and stakeholder validation, with comments and decisions recorded rather than inferred.",
+        "ready_when": "The session plan, feedback instrument and input-routing schedule identify the correct D2 evidence question, the decision-maker and the route for resolving every response.",
+    },
+    "P4": {
+        "evidence": "The summary must distinguish documented evidence from emerging claims and show the maturity, opportunity and delivery implication of the selected portfolio.",
+        "ready_when": "The portfolio economic summary is complete and every headline claim can be traced to a scored, evidence-graded innovation or a clearly identified outstanding work item.",
+    },
+    "P5": {
+        "evidence": "D2 treats national ownership as an operating condition: a policy step, budget line, institutional custodian, legal basis and Member State decision right must be explicit.",
+        "ready_when": "The national provision and named custodian are confirmed through the Member State route, with the policy, legal and budget actions recorded against an agreed timeline.",
+    },
+    "P6": {
+        "evidence": "A usable warning and communication plan must show trusted local institutions, language and cultural suitability, accessibility, safeguarding, feedback and non-digital continuity.",
+        "ready_when": "The media engagement has returned the language, channel, attribution and feedback arrangements, and the plan shows how the warning reaches excluded or offline groups.",
+    },
+    "P7": {
+        "evidence": "Implementation requires a valid mandate, legal authority, responsible institution, practical operating model, lifecycle funding and measurable accountability.",
+        "ready_when": "The outstanding national provision is confirmed and the mandate, legal, delivery, recurrent-cost and measurement arrangements form one implementable Member State pathway.",
+    },
+}
+
 
 def client():
     service = create_client(SUPABASE_URL, SUPABASE_KEY)
@@ -336,13 +370,19 @@ def show_product_readiness_callout(products):
         return
     st.warning(f"{len(outstanding)} product(s) are not ready for submission-tier generation. Complete the action shown for each product.")
     for _, product in outstanding.iterrows():
+        product_id = clean(product.get("Product"))
+        d2 = D2_PRODUCT_READINESS.get(product_id, {})
         with st.container(border=True):
-            st.error(f"{clean(product.get('Product'))} — {clean(product.get('Name'))}: {clean(product.get('Readiness'))}")
+            st.error(f"{product_id} — {clean(product.get('Name'))}: {clean(product.get('Readiness'))}")
             st.markdown("**What will make this product ready**")
             st.write(clean(product.get("Blocking fields and how they resolve")))
             resolver = clean(product.get("Resolver"))
             if resolver and resolver != "—":
                 st.caption(f"Complete through: {resolver}")
+            if d2:
+                st.markdown("**D2 evidence that must be in place**")
+                st.write(d2["evidence"])
+                st.success("Ready when: " + d2["ready_when"])
 
 
 auth_sidebar()
