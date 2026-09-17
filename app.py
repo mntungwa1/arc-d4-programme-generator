@@ -379,19 +379,51 @@ def show_product_readiness_callout(products):
     for _, product in outstanding.iterrows():
         product_id = clean(product.get("Product"))
         d2 = D2_PRODUCT_READINESS.get(product_id, {})
+        product_name = clean(product.get("Name"))
+        blocker = clean(product.get("Blocking fields and how they resolve"))
+        resolver = clean(product.get("Resolver"))
         with st.container(border=True):
-            st.error(f"{product_id} — {clean(product.get('Name'))}: {clean(product.get('Readiness'))}")
+            st.error(f"{product_id} — {product_name}: {clean(product.get('Readiness'))}")
             st.markdown("**What will make this product ready**")
-            st.write(clean(product.get("Blocking fields and how they resolve")))
-            resolver = clean(product.get("Resolver"))
+            st.write(blocker)
             if resolver and resolver != "—":
                 st.caption(f"Complete through: {resolver}")
             if d2:
                 st.markdown("**D2 evidence that must be in place**")
                 st.write(d2["evidence"])
-                st.success("Ready when: " + d2["ready_when"])
                 st.markdown("**D3 final readiness line**")
                 st.write(d2["d3_final_gate"])
+            st.markdown("**Resolve this item**")
+            checklist = [
+                ("Close the matrix blocker", blocker or "Record and resolve the outstanding matrix field."),
+                ("Attach or cite D2 evidence", d2.get("evidence", "Provide the required evidence and a verification reference.")),
+                ("Close the D3 delivery gate", d2.get("d3_final_gate", "Record the D3 validation, feasibility and implementation decision.")),
+                ("Obtain final verification", "Have the accountable owner confirm that the governed matrix and supporting record have been updated."),
+            ]
+            completed = 0
+            for number, (action, detail) in enumerate(checklist, start=1):
+                key = f"readiness_{product_id}_{number}"
+                if st.checkbox(f"{number}. {action}", key=key):
+                    completed += 1
+                st.caption(detail)
+            owner_col, due_col = st.columns(2)
+            with owner_col:
+                st.text_input(
+                    "Accountable owner / route",
+                    value="" if resolver in {"", "—"} else resolver,
+                    key=f"readiness_owner_{product_id}",
+                )
+            with due_col:
+                st.date_input("Target completion date", value=None, key=f"readiness_due_{product_id}")
+            st.text_input(
+                "Evidence reference or URL",
+                placeholder="Source, validation record, decision log or shared-drive link",
+                key=f"readiness_evidence_{product_id}",
+            )
+            st.progress(completed / len(checklist), text=f"Closure checklist: {completed} of {len(checklist)} actions completed")
+            if d2:
+                st.success("Ready when: " + d2["ready_when"])
+            st.info("Completing this checklist prepares the product for verification; it does not override the governed matrix readiness status. Final verification must be recorded in the source matrix and decision record.")
 
 
 auth_sidebar()
