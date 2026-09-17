@@ -59,6 +59,28 @@ D2_PRODUCT_READINESS = {
     },
 }
 
+# These are routing leads, not sources of evidence.  They help users find the
+# institution or framework that can close a fact while keeping the formal
+# evidence and approval test in the governed record.
+SOLUTION_LEADS = {
+    "F-01": {
+        "where": "ARC's controlled Determination Workbook and evidence workspace; use the SADC DRM Strategy and Action Plan as the regional reference framework.",
+        "url": "https://www.sadc.int/document/en-sadc-disaster-risk-management-strategy-and-action-plan",
+    },
+    "F-02": {
+        "where": "The nominated Member State DRM, finance or sector focal point responsible for the recurrent-cost decision.",
+        "url": "https://www.sadc.int/member-states",
+    },
+    "F-03": {
+        "where": "The nominated Member State legal, DRM or implementing-institution focal point that can confirm the national operating provision.",
+        "url": "https://www.sadc.int/member-states",
+    },
+    "F-04": {
+        "where": "The relevant SADC National Media Coordinator and the participating regional media organisation.",
+        "url": "https://www.sadc.int/media-coordinators",
+    },
+}
+
 
 def client():
     service = create_client(SUPABASE_URL, SUPABASE_KEY)
@@ -438,6 +460,14 @@ def show_product_readiness_callout(matrix):
                 st.caption(detail)
                 if owner and owner != "—":
                     st.caption(f"Accountable route: {owner}")
+                lead = SOLUTION_LEADS.get(fact_ids[number - 1]) if number <= len(fact_ids) else None
+                if lead:
+                    st.error(
+                        f"**Where the solution may be found:** {lead['where']}  \n"
+                        f"**Possible website address:** [{lead['url']}]({lead['url']})  \n\n"
+                        "**Warning:** this is a routing lead only. Do not treat the website as evidence, "
+                        "approval or closure of the outstanding fact. Record the verified source and the named decision-maker in the governed matrix."
+                    )
             if d2:
                 st.markdown("**D2 evidence that must be in place**")
                 st.write(d2["evidence"])
