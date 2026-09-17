@@ -293,6 +293,19 @@ def show_correction_callout(matrix, profile, title="What needs to be done"):
         st.dataframe(pd.DataFrame(actions), hide_index=True, use_container_width=True)
 
 
+def show_product_readiness_callout(products):
+    if products.empty or "Readiness" not in products.columns:
+        return
+    outstanding = products.loc[~products["Readiness"].astype(str).str.upper().str.startswith("READY")].copy()
+    if outstanding.empty:
+        st.success("All configured products are ready.")
+        return
+    st.warning(f"Product delivery attention: {len(outstanding)} product(s) are not ready to generate.")
+    columns = [column for column in ["Product", "Name", "Blocking fields and how they resolve", "Resolver", "Readiness"] if column in outstanding.columns]
+    with st.expander("View product-specific actions", expanded=False):
+        st.dataframe(outstanding[columns], hide_index=True, use_container_width=True)
+
+
 auth_sidebar()
 signed_in = approval_controls()
 
@@ -350,6 +363,7 @@ if workspace == "Programme command":
         selected_stage_panel(matrix, st.session_state.selected_stage, profile)
     st.subheader("Product readiness")
     st.dataframe(products[["Product", "Name", "Readiness"]], hide_index=True, use_container_width=True)
+    show_product_readiness_callout(products)
 
 elif workspace == "Workstream C — portfolio admission":
     st.subheader("Workstream C — portfolio admission")
@@ -359,12 +373,17 @@ elif workspace == "Workstream C — portfolio admission":
         view = portfolio.copy()
         view["Record status"] = view["IPI v2.0 (computed)"].apply(lambda value: "Pending" if clean(value).upper() == "PENDING" else "Scored")
         st.dataframe(view[["#", "Innovation", "IPI v2.0 (computed)", "Record status", "Confidence"]], hide_index=True, use_container_width=True, height=520)
+        pending_count = int((view["Record status"] == "Pending").sum())
+        if pending_count:
+            st.warning(f"S1 attention: {pending_count} portfolio record(s) still require their contracted IPI determinations. Complete SAS, GRS, CVS and SIS evidence before treating the portfolio as ranked.")
     with tabs[1]:
         ranking = portfolio.copy()
         numeric = pd.to_numeric(ranking["IPI v2.0 (computed)"], errors="coerce")
         ranking["Ranking status"] = numeric.map(lambda value: "Scored" if pd.notna(value) else "Pending")
         st.caption("The platform does not fabricate a Top 10 where the contracted index is still pending. Scored records rank first; the remaining records are visibly pending.")
         st.dataframe(ranking.assign(_score=numeric).sort_values(["_score", "#"], ascending=[False, True]).head(10)[["#", "Innovation", "IPI v2.0 (computed)", "Ranking status", "Confidence"]], hide_index=True, use_container_width=True)
+        if ranking["Ranking status"].eq("Pending").any():
+            st.warning("S2 attention: the shortlist cannot be formally published until the pending index determinations are resolved by the SADC Secretariat determination session.")
     with tabs[2]:
         if not signed_in:
             st.warning("Sign in before admitting a shared innovation.")
@@ -414,6 +433,7 @@ elif workspace == "Research and verification":
     st.subheader("Evidence ledger")
     ledger = table(matrix, "14_Audit_Log")
     st.dataframe(ledger, hide_index=True, use_container_width=True)
+    st.warning("Verification attention: a research return is only usable after the source is opened, checked against the permitted source and date rules, and accepted by a named analyst at S13. Unverified claims must remain outside the programme record.")
 
 else:
     st.subheader("Products and readiness")
@@ -422,6 +442,7 @@ else:
     product, detail = st.columns([3, 1], gap="large")
     with product:
         st.dataframe(products, hide_index=True, use_container_width=True)
+        show_product_readiness_callout(products)
         st.subheader("Product sets")
         st.dataframe(table(matrix, "11_Output_Products"), hide_index=True, use_container_width=True)
         st.subheader("Pre-generation gate for selected innovation")
