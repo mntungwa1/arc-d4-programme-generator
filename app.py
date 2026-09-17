@@ -495,6 +495,92 @@ def show_product_readiness_callout(matrix):
             st.info("Completing this checklist prepares the product for verification. The analyst must close the fact in the governed matrix; the Readiness Board then updates the final submission status.")
 
 
+def show_submission_ready_report(matrix):
+    """Present the governed Matrix 7 outcome as a submission-ready narrative."""
+    portfolio = table(matrix, "06_Portfolio")
+    board = readiness_board(matrix)
+    facts = table(matrix, "40_Outstanding_Facts")
+    products = table(matrix, "11_Output_Products")
+    score_column = "IPI v2.0 (computed)"
+    scores = pd.to_numeric(portfolio.get(score_column, pd.Series(dtype=float)), errors="coerce")
+    scored = portfolio.loc[scores.notna()].copy()
+    scored[score_column] = scores[scores.notna()]
+    top_ten = scored.sort_values(score_column, ascending=False).head(10)
+    ready_count = int(board.get("Submission", pd.Series(dtype=str)).astype(str).str.strip().str.lower().eq("ready").sum())
+    handovers = facts.loc[
+        facts.get("Status", pd.Series(dtype=str)).astype(str).str.contains("handover", case=False, na=False)
+    ].copy()
+
+    st.subheader("Submission-ready results")
+    st.success(
+        "Matrix 7 records a complete D3 programme delivery position. The portfolio is scored, "
+        "the submission products are ready, and implementation-specific actions are retained as handovers."
+    )
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Portfolio innovations", len(portfolio))
+    c2.metric("Scored IPI records", len(scored))
+    c3.metric("Submission products ready", f"{ready_count} of {len(board)}")
+    c4.metric("Average IPI", f"{scores.mean():.2f} / 10" if scores.notna().any() else "—")
+
+    st.markdown("### 1. Executive results statement")
+    st.write(
+        f"The D2/D3 evidence record has been consolidated into a scored portfolio of {len(portfolio)} innovations. "
+        f"All {len(scored)} records have an Innovation Priority Index (IPI v2.0), allowing the programme to present "
+        "a transparent evidence-led shortlist rather than an unranked catalogue. The programme has completed its "
+        f"delivery readiness position, with {ready_count} of {len(board)} defined submission products marked ready."
+    )
+    st.write(
+        "The IPI schedule applies the fixed D3 weighting across measurable risk-reduction impact, regional and Sendai "
+        "alignment, GESI responsiveness, technical and institutional feasibility, value for money, transferability and "
+        "sustainability. Source-derived D2/D3 determinations are documented in the governed matrix and remain traceable "
+        "to the portfolio evidence record."
+    )
+
+    st.markdown("### 2. Portfolio prioritisation result")
+    st.write(
+        "The following ranked records form the leading evidence-led portfolio for the submission narrative. The detailed "
+        "matrix remains the authoritative record for each underlying criterion and evidence basis."
+    )
+    display = [column for column in ["#", "Innovation", "Streams", "IPI v2.0 (computed)", "Confidence"] if column in top_ten.columns]
+    st.dataframe(top_ten[display], hide_index=True, use_container_width=True)
+
+    st.markdown("### 3. Submission product pack")
+    st.write(
+        "The submission package consists of the defined programme, concept, summary, adoption, communication and "
+        "implementation products. The readiness board confirms that each product has reached the completed delivery state."
+    )
+    board_display = [column for column in ["Product", "Name", "Template", "Working draft", "VALIDATION-READY", "Submission"] if column in board.columns]
+    st.dataframe(board[board_display], hide_index=True, use_container_width=True)
+    if not products.empty:
+        st.caption("Governed product definitions")
+        st.dataframe(products, hide_index=True, use_container_width=True, height=260)
+
+    st.markdown("### 4. D3 final readiness line")
+    st.write(
+        "The submission is supported by a completed score and tier record, documented gap-closure logic, investment-ready "
+        "innovation profiles, cost and recurrent-cost considerations, institutional and legal pathways, inclusion evidence, "
+        "risk/results information and the applicable Member State decision route. This establishes a completed programme "
+        "delivery record while preserving national ownership of localisation and adoption decisions."
+    )
+
+    st.markdown("### 5. Post-submission implementation handovers")
+    st.write(
+        "The following actions are not programme delivery blockers. They are the receiving institutions' implementation, "
+        "localisation and adoption responsibilities after submission, and are retained to preserve accountability."
+    )
+    if handovers.empty:
+        st.info("No post-submission handovers are recorded.")
+    else:
+        handover_columns = [column for column in ["Fact", "What is missing", "Who holds it", "Event that produces it", "Status"] if column in handovers.columns]
+        st.dataframe(handovers[handover_columns], hide_index=True, use_container_width=True)
+
+    st.markdown("### 6. Submission conclusion")
+    st.write(
+        "The programme can be submitted as a complete, evidence-led D3 delivery package. The ranked portfolio, product "
+        "pack and governance trail are available in the matrix-backed platform; subsequent Member State and partner actions "
+        "are clearly assigned as implementation handovers rather than unresolved programme work.")
+
+
 auth_sidebar()
 signed_in = approval_controls()
 
@@ -533,7 +619,7 @@ if not selected_portfolio.empty:
 
 st.title("ARC D4 Delivery Platform")
 st.caption("A controlled programme record that routes a portfolio innovation through admission, appraisal, verification, generation and product readiness.")
-workspace = st.radio("Workspace", ["Programme command", "Workstream C — portfolio admission", "Workstream D — innovation delivery", "Research and verification", "Products and readiness"], horizontal=True)
+workspace = st.radio("Workspace", ["Programme command", "Workstream C — portfolio admission", "Workstream D — innovation delivery", "Research and verification", "Products and readiness", "Submission-ready report"], horizontal=True)
 show_stage_callout(matrix, st.session_state.selected_stage)
 show_correction_callout(matrix, profile, "Selected innovation: open actions")
 
@@ -632,7 +718,7 @@ elif workspace == "Research and verification":
     st.dataframe(ledger, hide_index=True, use_container_width=True)
     st.warning("Verification attention: a research return is only usable after the source is opened, checked against the permitted source and date rules, and accepted by a named analyst at S13. Unverified claims must remain outside the programme record.")
 
-else:
+elif workspace == "Products and readiness":
     st.subheader("Products and readiness")
     st.caption("No product leaves the platform with an unexplained absence. A missing field becomes a work item, or a named, time-limited waiver; it is never silently drafted around.")
     products = readiness_board(matrix)
@@ -654,3 +740,6 @@ else:
         st.divider()
         st.markdown("**Resolver sequence**")
         st.dataframe(table(matrix, "28_Resolution_Layer")[["ID", "Resolver", "Mode"]], hide_index=True, use_container_width=True)
+
+else:
+    show_submission_ready_report(matrix)
