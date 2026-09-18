@@ -76,6 +76,65 @@ SOLUTION_LEADS = {
     },
 }
 
+# Annex R.1 comparator bands, expressed as 2026 USD planning ranges.  They guide
+# concept-level analysis only; a financing proposition must replace them with a
+# nationally costed proposal.
+COST_ARCHETYPES = {
+    "Community arrangement": (150_000.0, 400_000.0, 40_000.0, 120_000.0, "Moderate"),
+    "Community early warning": (200_000.0, 550_000.0, 70_000.0, 180_000.0, "Moderate"),
+    "Anticipatory protocol": (100_000.0, 300_000.0, 50_000.0, 150_000.0, "Moderate"),
+    "Forecasting capability": (400_000.0, 900_000.0, 120_000.0, 300_000.0, "Moderate"),
+    "Whole-of-system early warning": (2_000_000.0, 6_000_000.0, 500_000.0, 1_200_000.0, "High"),
+    "Dissemination and alerting": (250_000.0, 700_000.0, 90_000.0, 250_000.0, "Moderate"),
+    "Cash and voucher platform": (400_000.0, 1_100_000.0, 0.0, 0.0, "High"),
+    "Beneficiary registry": (2_000_000.0, 5_000_000.0, 0.0, 0.0, "High"),
+    "Sovereign risk transfer": (0.0, 0.0, 1_500_000.0, 4_000_000.0, "High"),
+    "Aerial systems": (700_000.0, 1_500_000.0, 200_000.0, 450_000.0, "High"),
+    "Earth observation platform": (300_000.0, 1_400_000.0, 100_000.0, 400_000.0, "Low"),
+    "Documentation or knowledge arrangement": (30_000.0, 700_000.0, 15_000.0, 200_000.0, "Low"),
+    "Capability platform or arrangement": (150_000.0, 500_000.0, 70_000.0, 180_000.0, "Low"),
+    "Risk information platform": (250_000.0, 2_000_000.0, 100_000.0, 600_000.0, "Moderate"),
+}
+
+# Existing portfolio records are prefilled from Annex R.1, Table 3.  The fields
+# are keyed to the governed portfolio number, avoiding name-matching ambiguity.
+COST_ESTIMATES = {
+    1: ("Community arrangement", 150000, 400000, 40000, 90000, "C1, C2", "Moderate", "USD per year"),
+    2: ("Dissemination and alerting", 600000, 1800000, 150000, 400000, "C5", "Moderate", "USD per year"),
+    3: ("Anticipatory protocol", 120000, 300000, 60000, 150000, "C10", "Moderate", "USD per year"),
+    4: ("Forecasting capability", 400000, 900000, 120000, 300000, "C4", "Moderate", "USD per year"),
+    5: ("Whole-of-system early warning", 2000000, 6000000, 500000, 1200000, "C4", "High", "USD per year"),
+    6: ("Community early warning", 200000, 550000, 70000, 180000, "C2, C3", "Moderate", "USD per year"),
+    7: ("Anticipatory protocol", 100000, 250000, 50000, 120000, "C10", "Moderate", "USD per year"),
+    8: ("Anticipatory protocol", 150000, 400000, 0, 0, "C10", "High", "USD 11 per person reached"),
+    9: ("Dissemination and alerting", 250000, 700000, 90000, 250000, "C5, C6", "Moderate", "USD per year"),
+    10: ("Cash and voucher platform", 400000, 1100000, 0, 0, "C7, C8", "High", "USD 0.17 per dollar transferred"),
+    11: ("Community early warning", 250000, 600000, 80000, 200000, "C2, C3", "Moderate", "USD per year"),
+    12: ("Sovereign risk transfer", 0, 0, 1500000, 4000000, "C11", "High", "USD premium per year"),
+    13: ("Aerial systems", 700000, 1500000, 200000, 450000, "C12", "High", "USD per year"),
+    14: ("Earth observation platform", 500000, 1400000, 180000, 400000, "C4", "Low", "USD per year"),
+    15: ("Community arrangement", 60000, 180000, 30000, 80000, "C2", "Moderate", "USD per year"),
+    16: ("Whole-of-system early warning", 1500000, 4000000, 400000, 900000, "C3, C4", "Moderate", "USD per year"),
+    17: ("Beneficiary registry", 2000000, 5000000, 0, 0, "C8, C9", "High", "USD 0.65–2.00 per household per year"),
+    18: ("Dissemination and alerting", 350000, 900000, 120000, 300000, "C5, C6", "Moderate", "USD per year"),
+    19: ("Documentation or knowledge arrangement", 30000, 90000, 15000, 45000, "C2", "Moderate", "USD per year"),
+    20: ("Documentation or knowledge arrangement", 250000, 700000, 80000, 200000, "C2", "Low", "USD per year"),
+    21: ("Community arrangement", 120000, 350000, 25000, 70000, "C1", "Moderate", "USD per year"),
+    22: ("Capability platform or arrangement", 200000, 500000, 80000, 180000, "C4", "Low", "USD per year"),
+    23: ("Earth observation platform", 300000, 800000, 100000, 250000, "C4", "Low", "USD per year"),
+    24: ("Cash and voucher platform", 300000, 900000, 0, 0, "C7, C8", "Moderate", "USD 0.17 per dollar transferred"),
+    25: ("Dissemination and alerting", 80000, 250000, 40000, 120000, "C5", "Low", "USD per year"),
+    26: ("Beneficiary registry", 400000, 1200000, 150000, 350000, "C8, C9", "Low", "USD per year"),
+    27: ("Aerial systems", 900000, 2500000, 300000, 700000, "C12, C13", "Low", "USD per year"),
+    28: ("Risk information platform", 400000, 1000000, 130000, 300000, "C4", "Low", "USD per year"),
+    29: ("Risk information platform", 250000, 700000, 100000, 250000, "C4", "Low", "USD per year"),
+    30: ("Capability platform or arrangement", 150000, 400000, 70000, 180000, "C2", "Low", "USD per year"),
+    31: ("Capability platform or arrangement", 800000, 2500000, 400000, 900000, "C4", "Low", "USD per year, regional"),
+    32: ("Risk information platform", 700000, 2000000, 250000, 600000, "C4", "Moderate", "USD per year, regional"),
+    33: ("Risk information platform", 500000, 1400000, 150000, 400000, "C4", "Moderate", "USD per year"),
+    34: ("Sovereign risk transfer", 0, 0, 0, 0, "C11", "Moderate", "Premium and fee dependent"),
+}
+
 
 def client():
     service = create_client(SUPABASE_URL, SUPABASE_KEY)
@@ -247,6 +306,134 @@ def approval_controls():
         st.stop()
 
 
+def cost_analysis_complete(profile):
+    required = ["cost_archetype", "cost_scope", "cost_estimate_class", "cost_basis", "cost_confidence", "cost_recurrent_unit", "cost_rationale"]
+    if not all(yes(profile.get(field)) for field in required):
+        return False
+    if not profile.get("cost_annex_acknowledged"):
+        return False
+    setup_required = profile.get("cost_setup_treatment") != "No separate set-up amount"
+    setup_ok = (not setup_required or float(profile.get("cost_setup_high", 0) or 0) > 0)
+    recurrent_ok = float(profile.get("cost_recurrent_high", 0) or 0) > 0 or profile.get("cost_recurrent_unit") != "USD per year"
+    return setup_ok and recurrent_ok
+
+
+def cost_analysis_form(profile, name_key):
+    st.subheader("Cost analysis")
+    st.caption(
+        "Required before admission. Annex R.1 provides a 2026 USD comparative planning band, not a quotation. "
+        "Use national prices or a costed proposal when preparing an instrument for financing."
+    )
+    options = [""] + list(COST_ARCHETYPES)
+    selected = profile.get("cost_archetype", "")
+    profile["cost_archetype"] = st.selectbox(
+        "Cost archetype *", options,
+        index=options.index(selected) if selected in options else 0,
+        key=f"{name_key}_cost_archetype",
+    )
+    benchmark = COST_ARCHETYPES.get(profile["cost_archetype"])
+    if benchmark and not profile.get("cost_basis"):
+        profile["cost_basis"] = f"Annex R.1 comparator band for {profile['cost_archetype']}"
+    if benchmark and not profile.get("cost_confidence"):
+        profile["cost_confidence"] = benchmark[4]
+
+    left, right = st.columns(2)
+    with left:
+        scopes = ["", "Per Member State", "Regional", "Sub-national or local"]
+        scope = profile.get("cost_scope", "")
+        profile["cost_scope"] = st.selectbox("Costing scope *", scopes, index=scopes.index(scope) if scope in scopes else 0, key=f"{name_key}_cost_scope")
+        classes = ["", "Annex R.1 comparative band", "National price estimate", "Costed financing proposal"]
+        estimate_class = profile.get("cost_estimate_class", "Annex R.1 comparative band" if benchmark else "")
+        profile["cost_estimate_class"] = st.selectbox("Estimate class *", classes, index=classes.index(estimate_class) if estimate_class in classes else 0, key=f"{name_key}_cost_class")
+        treatments = ["Set-up investment", "No separate set-up amount"]
+        default_treatment = "No separate set-up amount" if benchmark and benchmark[1] == 0 and benchmark[2] == 0 else "Set-up investment"
+        treatment = profile.get("cost_setup_treatment", default_treatment)
+        profile["cost_setup_treatment"] = st.selectbox("Set-up cost treatment *", treatments, index=treatments.index(treatment) if treatment in treatments else 0, key=f"{name_key}_cost_treatment")
+        setup_low_default = float(profile.get("cost_setup_low", benchmark[0] if benchmark else 0) or 0)
+        setup_high_default = float(profile.get("cost_setup_high", benchmark[1] if benchmark else 0) or 0)
+        profile["cost_setup_low"] = st.number_input("Set-up low estimate (USD)", min_value=0.0, value=setup_low_default, step=1000.0, key=f"{name_key}_cost_setup_low")
+        profile["cost_setup_high"] = st.number_input("Set-up high estimate (USD)", min_value=0.0, value=setup_high_default, step=1000.0, key=f"{name_key}_cost_setup_high")
+    with right:
+        units = ["", "USD per year", "USD per person reached", "USD per household per year", "USD per dollar transferred", "USD premium per year", "Premium and fee dependent"]
+        raw_unit = benchmark[5] if benchmark else ""
+        default_unit = (
+            "USD per person reached" if "person" in raw_unit else
+            "USD per household per year" if "household" in raw_unit else
+            "USD per dollar transferred" if "dollar transferred" in raw_unit else
+            "USD premium per year" if "premium" in raw_unit and "fee" not in raw_unit else
+            "Premium and fee dependent" if "fee dependent" in raw_unit else
+            raw_unit
+        )
+        unit = profile.get("cost_recurrent_unit", default_unit)
+        profile["cost_recurrent_unit"] = st.selectbox("Annual recurrent-cost unit *", units, index=units.index(unit) if unit in units else 0, key=f"{name_key}_cost_unit")
+        recurrent_low_default = float(profile.get("cost_recurrent_low", benchmark[2] if benchmark else 0) or 0)
+        recurrent_high_default = float(profile.get("cost_recurrent_high", benchmark[3] if benchmark else 0) or 0)
+        profile["cost_recurrent_low"] = st.number_input("Annual recurrent low estimate (USD)", min_value=0.0, value=recurrent_low_default, step=1000.0, key=f"{name_key}_cost_recurrent_low")
+        profile["cost_recurrent_high"] = st.number_input("Annual recurrent high estimate (USD)", min_value=0.0, value=recurrent_high_default, step=1000.0, key=f"{name_key}_cost_recurrent_high")
+        confidences = ["", "High", "Moderate", "Low"]
+        confidence = profile.get("cost_confidence", benchmark[4] if benchmark else "")
+        profile["cost_confidence"] = st.selectbox("Cost confidence *", confidences, index=confidences.index(confidence) if confidence in confidences else 0, key=f"{name_key}_cost_confidence")
+        midpoint = (profile["cost_setup_low"] + profile["cost_setup_high"] + profile["cost_recurrent_low"] + profile["cost_recurrent_high"]) / 2
+        st.metric("Indicative first-year midpoint", f"USD {midpoint:,.0f}" if midpoint else "Context-specific")
+    profile["cost_basis"] = st.text_area("Comparator or national-price basis *", profile.get("cost_basis", ""), key=f"{name_key}_cost_basis")
+    profile["cost_rationale"] = st.text_area("Cost and value-for-money rationale *", profile.get("cost_rationale", ""), key=f"{name_key}_cost_rationale")
+    profile["cost_annex_acknowledged"] = st.checkbox(
+        "I confirm that this is a planning estimate and will be replaced by national pricing for financing.",
+        value=bool(profile.get("cost_annex_acknowledged", False)), key=f"{name_key}_cost_acknowledged",
+    )
+
+
+def apply_portfolio_cost_defaults(profile, portfolio_row):
+    """Bring Annex R.1 Table 3 bands into the existing innovation profile."""
+    try:
+        portfolio_number = int(float(portfolio_row.get("#")))
+    except (TypeError, ValueError):
+        return
+    estimate = COST_ESTIMATES.get(portfolio_number)
+    if not estimate:
+        return
+    archetype, setup_low, setup_high, recurrent_low, recurrent_high, comparator, confidence, recurrent_unit = estimate
+    normalized_unit = (
+        "USD per person reached" if "person" in recurrent_unit else
+        "USD per household per year" if "household" in recurrent_unit else
+        "USD per dollar transferred" if "dollar transferred" in recurrent_unit else
+        "USD premium per year" if "premium" in recurrent_unit and "fee" not in recurrent_unit else
+        "Premium and fee dependent" if "fee dependent" in recurrent_unit else
+        recurrent_unit
+    )
+    profile.setdefault("cost_archetype", archetype)
+    profile.setdefault("cost_scope", "Regional" if "regional" in recurrent_unit.lower() else "Per Member State")
+    profile.setdefault("cost_estimate_class", "Annex R.1 comparative band")
+    profile.setdefault("cost_setup_treatment", "No separate set-up amount" if setup_high == 0 else "Set-up investment")
+    profile.setdefault("cost_setup_low", setup_low)
+    profile.setdefault("cost_setup_high", setup_high)
+    profile.setdefault("cost_recurrent_low", recurrent_low)
+    profile.setdefault("cost_recurrent_high", recurrent_high)
+    profile.setdefault("cost_recurrent_unit", normalized_unit)
+    profile.setdefault("cost_basis", f"Annex R.1 Cost Estimation Matrix, comparator {comparator}")
+    profile.setdefault("cost_confidence", confidence)
+    profile.setdefault("cost_rationale", "Annex R.1 comparative planning band. Replace with national pricing when preparing a financing proposition.")
+    profile.setdefault("cost_annex_acknowledged", True)
+
+
+def save_cost_analysis(profile):
+    """Persist the completed costing with the shared innovation profile."""
+    user = client().auth.get_user().user
+    name = clean(profile.get("innovation_name"))
+    payload = {
+        "innovation_name": name,
+        "innovation_url": profile.get("innovation_url") or None,
+        "innovation_type": profile.get("innovation_type") or None,
+        "d3_profile": profile,
+        "created_by": user.id,
+    }
+    stored = client().table("d4_innovations").select("id").eq("innovation_name", name).limit(1).execute().data or []
+    if stored:
+        client().table("d4_innovations").update(payload).eq("id", stored[0]["id"]).execute()
+    else:
+        client().table("d4_innovations").insert(payload).execute()
+
+
 def profile_form(matrix, profile, name_key, allow_save):
     st.subheader("Investment-ready innovation profile")
     st.caption("This is the governed working record. It creates owned work instead of hiding an unresolved requirement.")
@@ -264,6 +451,8 @@ def profile_form(matrix, profile, name_key, allow_save):
         profile["phase"] = st.selectbox("Programme phase", ["", "Phase 1", "Phase 2", "Phase 3"], key=f"{name_key}_phase")
         profile["mandate_level"] = st.selectbox("Mandate level", ["", "Regional", "National", "Last-mile"], key=f"{name_key}_mandate")
         profile["selected_window"] = st.selectbox("Investment route", table(matrix, "25_Investment_Routes").iloc[:, 1].dropna().astype(str).tolist() if not table(matrix, "25_Investment_Routes").empty else [""], key=f"{name_key}_route")
+    st.divider()
+    cost_analysis_form(profile, name_key)
     st.divider()
     st.markdown("#### Twelve profile components")
     components = table(matrix, "07_IRIP_Components")
@@ -301,6 +490,8 @@ def profile_form(matrix, profile, name_key, allow_save):
     if allow_save and st.button("Admit innovation to shared portfolio", type="primary"):
         required = ["innovation_name", "description", "innovation_type", "lead_institution"]
         missing = [item.replace("_", " ") for item in required if not yes(profile.get(item))]
+        if not cost_analysis_complete(profile):
+            missing.append("completed cost analysis")
         if missing:
             st.error("Complete: " + ", ".join(missing))
         else:
@@ -329,6 +520,8 @@ def readiness(matrix, profile):
     absent = [clean(item["#"]) for _, item in components.iterrows() if not yes(profile.get(f"irip_{clean(item['#'])}"))]
     if absent:
         failures.append("V01 — incomplete profile components: " + ", ".join(absent))
+    if not cost_analysis_complete(profile):
+        failures.append("V06 — incomplete Annex R.1 cost analysis")
     return failures
 
 
@@ -349,6 +542,12 @@ def correction_actions(matrix, profile):
     for field, detail in field_actions.items():
         if not yes(profile.get(field)):
             actions.append({"Aspect": detail[0], "What needs correction": detail[1], "Resolver / owner": detail[2]})
+    if not cost_analysis_complete(profile):
+        actions.append({
+            "Aspect": "Annex R.1 cost analysis",
+            "What needs correction": "Select the cost archetype and scope; record the comparative or national-price basis, set-up and recurrent-cost treatment, confidence, value-for-money rationale and planning-estimate acknowledgement.",
+            "Resolver / owner": "R3 — financing and cost analysis",
+        })
     for _, component in table(matrix, "07_IRIP_Components").iterrows():
         number = clean(component["#"])
         if not yes(profile.get(f"irip_{number}")):
@@ -612,6 +811,7 @@ profile.setdefault("innovation_type", saved.get("innovation_type", ""))
 selected_portfolio = portfolio.loc[portfolio["Innovation"].astype(str) == selected_name]
 if not selected_portfolio.empty:
     source_scores = selected_portfolio.iloc[0]
+    apply_portfolio_cost_defaults(profile, source_scores)
     for symbol in table(matrix, "05_IPI_Criteria").get("Symbol", pd.Series(dtype=str)).dropna().astype(str):
         source_value = source_scores.get(symbol)
         if pd.notna(source_value) and yes(source_value):
@@ -696,6 +896,22 @@ elif workspace == "Workstream D — innovation delivery":
     else:
         st.success("The visible innovation profile passes the current pre-generation checks.")
     show_correction_callout(matrix, profile, "Actions to make this innovation ready")
+    st.divider()
+    st.subheader("Annex R.1 cost analysis")
+    cost_analysis_form(profile, f"existing_cost_{clean(selected_name)}")
+    if cost_analysis_complete(profile):
+        st.success("Cost analysis complete. The band can support D3 planning and prioritisation; replace it with national pricing for a financing proposition.")
+    else:
+        st.info("Complete the cost-analysis fields before using this innovation in an investment-ready proposition.")
+    if signed_in and st.button("Save cost analysis to shared register", key=f"save_cost_{clean(selected_name)}"):
+        if not cost_analysis_complete(profile):
+            st.error("Complete the cost analysis before saving it to the shared register.")
+        else:
+            try:
+                save_cost_analysis(profile)
+                st.success("Cost analysis saved to the shared register.")
+            except Exception as exc:
+                st.error(f"Could not save the cost analysis: {exc}")
 
 elif workspace == "Research and verification":
     st.subheader("Research broker and verification gate")
