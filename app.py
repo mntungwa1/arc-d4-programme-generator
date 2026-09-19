@@ -8,6 +8,8 @@ from pathlib import Path
 
 import pandas as pd
 import streamlit as st
+from docx import Document
+from docx.shared import Inches, Pt
 from supabase import create_client
 
 st.set_page_config(page_title="ARC D4 Delivery Platform", page_icon="◆", layout="wide")
@@ -780,6 +782,256 @@ def show_submission_ready_report(matrix):
         "are clearly assigned as implementation handovers rather than unresolved programme work.")
 
 
+def proposal_money(value):
+    """Format a proposal amount without treating an indicative band as a quotation."""
+    try:
+        number = float(value or 0)
+    except (TypeError, ValueError):
+        return "To be costed"
+    return f"USD {number:,.0f}" if number else "To be costed"
+
+
+def proposal_filename(value):
+    safe = "".join(character if character.isalnum() else "_" for character in clean(value))
+    return (safe.strip("_") or "innovation")[:80] + "_funding_proposal.docx"
+
+
+def proposal_outputs(matrix):
+    """Return every governed programme output in a presentable, schema-tolerant form."""
+    products = table(matrix, "11_Output_Products")
+    if products.empty:
+        return []
+    identifier = next((column for column in ["Product", "Product ID", "ID"] if column in products.columns), products.columns[0])
+    name = next((column for column in ["Name", "Output", "Product name"] if column in products.columns), None)
+    purpose = next((column for column in ["Purpose", "Use", "Description", "What it does"] if column in products.columns), None)
+    records = []
+    for _, row in products.iterrows():
+        records.append({
+            "id": clean(row.get(identifier)),
+            "name": clean(row.get(name)) if name else "",
+            "purpose": clean(row.get(purpose)) if purpose else "",
+        })
+    return records
+
+
+def add_proposal_table(document, headings, rows, widths=None):
+    table_doc = document.add_table(rows=1, cols=len(headings))
+    table_doc.style = "Table Grid"
+    header = table_doc.rows[0].cells
+    for index, heading in enumerate(headings):
+        header[index].text = clean(heading)
+        for run in header[index].paragraphs[0].runs:
+            run.bold = True
+    for row in rows:
+        cells = table_doc.add_row().cells
+        for index, value in enumerate(row):
+            cells[index].text = clean(value)
+    if widths:
+        for row in table_doc.rows:
+            for index, width in enumerate(widths):
+                row.cells[index].width = Inches(width)
+    document.add_paragraph()
+
+
+def build_funding_proposal_docx(matrix, profile, proposal):
+    """Compile a transparent, funder-specific proposal from the governed record."""
+    document = Document()
+    section = document.sections[0]
+    section.top_margin = Inches(0.65)
+    section.bottom_margin = Inches(0.65)
+    section.left_margin = Inches(0.75)
+    section.right_margin = Inches(0.75)
+    normal = document.styles["Normal"]
+    normal.font.name = "Aptos"
+    normal.font.size = Pt(10)
+
+    name = clean(profile.get("innovation_name")) or "Selected innovation"
+    funder = clean(proposal.get("funder_name")) or "Prospective funding partner"
+    scope = clean(proposal.get("implementation_scope")) or "To be agreed with the funding partner"
+    duration = int(proposal.get("duration_months") or 0)
+    description = clean(profile.get("description")) or clean(proposal.get("innovation_summary"))
+    if not description:
+        description = "The innovation profile requires a concise description of the solution, intended users and DRM function before submission."
+    outputs = proposal_outputs(matrix)
+
+    document.add_heading(clean(proposal.get("proposal_title")) or f"Funding proposal: {name}", 0)
+    document.add_paragraph("ARC D4 Programme — innovation-specific financing proposition")
+    document.add_paragraph(f"Prepared for: {funder}")
+    document.add_paragraph(f"Prepared on: {datetime.now(timezone.utc).strftime('%d %B %Y')}")
+    document.add_paragraph("Controlled draft for funder discussion. Amounts are planning estimates unless national pricing is attached.")
+
+    document.add_heading("1. Executive summary", level=1)
+    request = proposal_money(proposal.get("requested_amount"))
+    instrument = clean(proposal.get("funding_instrument")) or "Grant or financing instrument to be agreed"
+    document.add_paragraph(
+        f"This proposal requests {request} from {funder} through a {instrument.lower()} to support {name} "
+        f"over {duration or 'an agreed'} month implementation period in {scope}. {description}"
+    )
+    document.add_paragraph(
+        clean(proposal.get("funder_alignment")) or
+        "The proposal will be refined with the funder to confirm its strategic objectives, geographic focus, eligibility rules and reporting requirements."
+    )
+
+    document.add_heading("2. Innovation, problem and proposed response", level=1)
+    document.add_heading("Innovation profile", level=2)
+    add_proposal_table(document, ["Field", "Controlled record"], [
+        ["Innovation", name],
+        ["Innovation type", clean(profile.get("innovation_type")) or "To be confirmed"],
+        ["Implementation scope", scope],
+        ["Lead institution", clean(profile.get("lead_institution")) or "To be confirmed"],
+        ["Delivery counterpart", clean(profile.get("delivery_counterpart")) or "To be confirmed"],
+        ["Mandate level", clean(profile.get("mandate_level")) or "To be confirmed"],
+        ["Evidence / innovation URL", clean(profile.get("innovation_url")) or "To be attached"],
+    ], widths=[1.8, 5.6])
+    document.add_heading("Development challenge and response", level=2)
+    document.add_paragraph(
+        clean(proposal.get("problem_statement")) or
+        "Define the priority DRM problem, affected populations, geographic exposure and the evidence that this intervention will address before submitting to a funder."
+    )
+    document.add_paragraph(
+        "The proposed response is to operationalise the selected innovation through the governed D2/D3 pathway: evidence-led prioritisation, an investment-ready profile, cost analysis, accountable delivery arrangements, safeguards and results tracking."
+    )
+
+    document.add_heading("3. Programme outputs and deliverables", level=1)
+    document.add_paragraph(
+        "The following ARC D4 outputs will be made available to the funder as the programme evidence, design and delivery package for this innovation. They are programme outputs; any national adoption or implementation decision remains with the responsible institution."
+    )
+    output_rows = [[item["id"], item["name"] or "Governed output", item["purpose"] or "See controlled matrix definition"] for item in outputs]
+    if output_rows:
+        add_proposal_table(document, ["Output", "Deliverable", "Contribution to the proposal"], output_rows, widths=[0.8, 2.6, 4.0])
+    else:
+        document.add_paragraph("Attach the controlled ARC D4 output-product register before submission.")
+
+    document.add_heading("4. Delivery approach, governance and timeline", level=1)
+    document.add_paragraph(
+        "Delivery will follow the D3 implementation pathway, with the lead institution accountable for the innovation record, the delivery counterpart responsible for field execution, and the recurrent-cost custodian responsible for post-investment operating arrangements."
+    )
+    add_proposal_table(document, ["Period", "Indicative milestone", "Accountability"], [
+        ["Months 1–3", "Inception, national-price validation, delivery planning and safeguards confirmation", clean(profile.get("lead_institution")) or "Lead institution"],
+        ["Months 4–" + str(duration or 12), "Implementation, technical support, output production and results monitoring", clean(profile.get("delivery_counterpart")) or "Delivery counterpart"],
+        ["Close-out", "Handover, recurrent-cost confirmation, learning and funder reporting", clean(profile.get("recurrent_cost_custodian")) or "Recurrent-cost custodian"],
+    ], widths=[1.2, 4.4, 1.8])
+
+    document.add_heading("5. Financing request, cost and value for money", level=1)
+    setup_low = profile.get("cost_setup_low")
+    setup_high = profile.get("cost_setup_high")
+    recurrent_low = profile.get("cost_recurrent_low")
+    recurrent_high = profile.get("cost_recurrent_high")
+    add_proposal_table(document, ["Cost element", "Planning range / treatment", "Evidence basis"], [
+        ["Funding request", request, clean(proposal.get("funding_instrument")) or "To be agreed"],
+        ["Set-up investment", f"{proposal_money(setup_low)} – {proposal_money(setup_high)}", clean(profile.get("cost_estimate_class")) or "To be costed"],
+        ["Annual recurrent cost", f"{proposal_money(recurrent_low)} – {proposal_money(recurrent_high)} ({clean(profile.get('cost_recurrent_unit')) or 'unit to be confirmed'})", clean(profile.get("cost_confidence")) or "Confidence to be assessed"],
+        ["Cost basis", clean(profile.get("cost_basis")) or "National pricing required", clean(profile.get("cost_archetype")) or "Cost archetype to be selected"],
+    ], widths=[1.6, 3.2, 2.6])
+    document.add_paragraph(
+        clean(profile.get("cost_rationale")) or
+        "Complete the Annex R.1 cost analysis and national-price validation before any financing commitment. Comparative bands are planning inputs and are not quotations or approved budgets."
+    )
+    document.add_paragraph(
+        "Value for money will be assessed through the defined delivery outputs, implementation feasibility, recurrent-cost ownership, targeted risk-reduction contribution and transparent monitoring evidence."
+    )
+
+    document.add_heading("6. Results, safeguards and sustainability", level=1)
+    document.add_paragraph(
+        clean(proposal.get("expected_results")) or
+        "Specify measurable beneficiary, systems and risk-reduction results with baselines, targets, disaggregation and verification sources in the funder-facing results framework."
+    )
+    document.add_paragraph(
+        "The proposal will apply the ARC D4 safeguards and inclusion approach, including gender, equity and social inclusion responsiveness, accessibility, feedback arrangements and non-digital continuity where relevant."
+    )
+    document.add_paragraph(
+        f"Sustainability depends on the named recurrent-cost custodian ({clean(profile.get('recurrent_cost_custodian')) or 'to be confirmed'}), national ownership, institutional mandate and an agreed operating budget or financing route."
+    )
+
+    document.add_heading("7. Key risks and mitigation", level=1)
+    add_proposal_table(document, ["Risk", "Mitigation / decision required"], [
+        ["National price or scope differs from comparator", "Validate the design and costs with the accountable national institution before contracting or disbursement."],
+        ["No confirmed recurrent-cost arrangement", "Secure a named custodian and operating-cost decision as a condition of scale-up."],
+        ["Evidence or delivery data incomplete", "Use the controlled matrix and verification route; do not present unverified claims as results."],
+        ["Local adoption conditions change", "Retain the Member State decision right and update the implementation plan through the authorised focal point."],
+    ], widths=[2.6, 4.8])
+
+    document.add_heading("8. Attachments for the funder", level=1)
+    for item in [
+        "Innovation Priority Index and D2/D3 evidence record",
+        "Investment-ready innovation profile and supporting evidence links",
+        "Annex R.1 comparative cost analysis and nationally costed proposal when available",
+        "Implementation plan, results framework, risk register and safeguards record",
+        "ARC D4 programme/output-product pack and relevant institutional decision records",
+    ]:
+        document.add_paragraph(item, style="List Bullet")
+    document.add_paragraph(
+        "Submission control: this document is a compiled proposal draft. It must be checked against the funder's eligibility, approved national pricing, institutional authority and the final signed delivery arrangements before external submission."
+    )
+    buffer = BytesIO()
+    document.save(buffer)
+    return buffer.getvalue()
+
+
+def show_funding_proposal_workspace(matrix, profile):
+    st.subheader("Compile a funding proposal")
+    st.caption(
+        "Create a funder-specific proposal for the selected innovation. The compiled document includes the innovation record, "
+        "ARC D4 outputs, delivery pathway, cost analysis, safeguards, risks and a transparent statement of any information still requiring confirmation."
+    )
+    outputs = proposal_outputs(matrix)
+    st.info(f"This proposal will include all {len(outputs)} governed ARC D4 output product(s) for **{clean(profile.get('innovation_name'))}**.")
+    if not cost_analysis_complete(profile):
+        st.warning(
+            "Cost analysis is incomplete. You can compile a discussion draft, but complete Annex R.1 and replace comparative bands with national pricing before a financing commitment."
+        )
+    if not yes(profile.get("description")):
+        st.warning("Add an innovation description in Workstream D before external submission; the proposal will otherwise flag this as information still required.")
+
+    left, right = st.columns(2)
+    with left:
+        title = st.text_input("Proposal title *", value=f"Funding proposal: {clean(profile.get('innovation_name'))}", key="proposal_title")
+        funder_name = st.text_input("Funder name *", placeholder="Name of prospective funding partner", key="proposal_funder")
+        funder_type = st.selectbox("Funder type", ["Grant fund", "Development finance institution", "Climate fund", "Philanthropic foundation", "Bilateral partner", "Corporate / private sector", "Other"], key="proposal_funder_type")
+        instrument = st.selectbox("Requested funding instrument", ["Grant", "Concessional finance", "Blended finance", "Technical assistance", "Guarantee / risk finance", "To be agreed"], key="proposal_instrument")
+        requested_amount = st.number_input("Amount requested (USD) *", min_value=0.0, step=10000.0, key="proposal_amount")
+    with right:
+        scope = st.text_input("Implementation geography / scope *", placeholder="e.g. Regional SADC programme or named Member State", key="proposal_scope")
+        duration = st.number_input("Implementation duration (months) *", min_value=1, max_value=120, value=24, step=1, key="proposal_duration")
+        st.text_area("Funder priorities and strategic alignment", placeholder="Which funder objective, theme or call does this proposal address?", key="proposal_alignment")
+        st.text_area("Development problem statement", placeholder="Describe the need, affected population, gap and evidence basis.", key="proposal_problem")
+        st.text_area("Expected results and measures", placeholder="State expected results, indicators, targets and verification sources.", key="proposal_results")
+
+    missing = []
+    if not yes(title):
+        missing.append("proposal title")
+    if not yes(funder_name):
+        missing.append("funder name")
+    if not yes(scope):
+        missing.append("implementation geography / scope")
+    if requested_amount <= 0:
+        missing.append("amount requested")
+    proposal = {
+        "proposal_title": title,
+        "funder_name": funder_name,
+        "funder_type": funder_type,
+        "funding_instrument": instrument,
+        "requested_amount": requested_amount,
+        "implementation_scope": scope,
+        "duration_months": duration,
+        "funder_alignment": st.session_state.get("proposal_alignment", ""),
+        "problem_statement": st.session_state.get("proposal_problem", ""),
+        "expected_results": st.session_state.get("proposal_results", ""),
+    }
+    if missing:
+        st.warning("Before compiling, complete: " + ", ".join(missing) + ".")
+        return
+    document = build_funding_proposal_docx(matrix, profile, proposal)
+    st.success("Proposal draft compiled. Review the controlled warnings and attach national pricing and funder-specific evidence before external submission.")
+    st.download_button(
+        "Download compiled funding proposal (.docx)",
+        data=document,
+        file_name=proposal_filename(clean(profile.get("innovation_name")) + "_" + funder_name),
+        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        type="primary",
+    )
+
+
 auth_sidebar()
 signed_in = approval_controls()
 
@@ -819,7 +1071,7 @@ if not selected_portfolio.empty:
 
 st.title("ARC D4 Delivery Platform")
 st.caption("A controlled programme record that routes a portfolio innovation through admission, appraisal, verification, generation and product readiness.")
-workspace = st.radio("Workspace", ["Programme command", "Workstream C — portfolio admission", "Workstream D — innovation delivery", "Research and verification", "Products and readiness", "Submission-ready report"], horizontal=True)
+workspace = st.radio("Workspace", ["Programme command", "Workstream C — portfolio admission", "Workstream D — innovation delivery", "Research and verification", "Products and readiness", "Submission-ready report", "Funding proposal"], horizontal=True)
 show_stage_callout(matrix, st.session_state.selected_stage)
 show_correction_callout(matrix, profile, "Selected innovation: open actions")
 
@@ -957,5 +1209,7 @@ elif workspace == "Products and readiness":
         st.markdown("**Resolver sequence**")
         st.dataframe(table(matrix, "28_Resolution_Layer")[["ID", "Resolver", "Mode"]], hide_index=True, use_container_width=True)
 
-else:
+elif workspace == "Submission-ready report":
     show_submission_ready_report(matrix)
+else:
+    show_funding_proposal_workspace(matrix, profile)
