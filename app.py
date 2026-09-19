@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import base64
+import re
 from datetime import datetime, timezone
 from io import BytesIO
 from pathlib import Path
@@ -9,6 +10,7 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 from docx import Document
+from docx.enum.table import WD_CELL_VERTICAL_ALIGNMENT
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Inches, Pt, RGBColor
@@ -21,6 +23,9 @@ SUPABASE_KEY = "sb_publishable_UfYoG2ZgKP0nLA5KGwEG6w_2rCP9_R8"
 APP_URL = "https://arc-d4-programme-generator-c7qdwgesqvnwjafgvpxgat.streamlit.app/"
 ADMIN_EMAILS = {"dingaan@academyrc.co.za", "drcliff@academyrc.co.za"}
 BOOK = Path(__file__).parent / "ARC_D4_Automation_Matrix.b64"
+SADC_PROPOSAL_TEMPLATE = Path(__file__).parent / "SADC_Proposal_Template.b64"
+SADC_BLUE = "003E78"
+COMPLETION_BLUE = "0070C0"
 
 # D2 Innovation Landscape Assessment v3.1 readiness conditions.  These make
 # product readiness traceable to the landscape evidence rather than to a
@@ -801,6 +806,119 @@ def proposal_placeholder(item, action):
     return f"[TO COMPLETE: {item}. {action}]"
 
 
+def sadc_proposal_document():
+    """Start a proposal on the supplied SADC template while removing SOP body text."""
+    if SADC_PROPOSAL_TEMPLATE.exists():
+        document = Document(BytesIO(base64.b64decode(SADC_PROPOSAL_TEMPLATE.read_text())))
+        body = document._element.body
+        for child in list(body):
+            if child.tag != qn("w:sectPr"):
+                body.remove(child)
+    else:
+        document = Document()
+    for section in document.sections:
+        section.different_first_page_header_footer = True
+        header = section.header
+        if header.paragraphs and len(header.paragraphs[0].runs) >= 3:
+            header.paragraphs[0].runs[1].text = "SADC SHOC"
+            header.paragraphs[0].runs[2].text = "           ARC D4 Funding Proposal"
+    return document
+
+
+def shade_cell(cell, color):
+    properties = cell._tc.get_or_add_tcPr()
+    shading = properties.find(qn("w:shd"))
+    if shading is None:
+        shading = OxmlElement("w:shd")
+        properties.append(shading)
+    shading.set(qn("w:fill"), color)
+
+
+def apply_table_grid_style(document, table_doc):
+    if "Table Grid" in [style.name for style in document.styles]:
+        table_doc.style = "Table Grid"
+
+
+def format_proposal_table(table_doc):
+    """Use the SADC navy table treatment even when the source template has no table style."""
+    for row_index, row in enumerate(table_doc.rows):
+        for cell in row.cells:
+            cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
+            properties = cell._tc.get_or_add_tcPr()
+            borders = properties.find(qn("w:tcBorders"))
+            if borders is None:
+                borders = OxmlElement("w:tcBorders")
+                properties.append(borders)
+            for edge in ["top", "left", "bottom", "right", "insideH", "insideV"]:
+                border = borders.find(qn(f"w:{edge}"))
+                if border is None:
+                    border = OxmlElement(f"w:{edge}")
+                    borders.append(border)
+                border.set(qn("w:val"), "single")
+                border.set(qn("w:sz"), "4")
+                border.set(qn("w:color"), "D9D9D9")
+            if row_index == 0:
+                shade_cell(cell, SADC_BLUE)
+                for paragraph in cell.paragraphs:
+                    for run in paragraph.runs:
+                        run.bold = True
+                        run.font.color.rgb = RGBColor(255, 255, 255)
+
+
+def add_sadc_cover(document, proposal, profile):
+    """Apply the SADC template's navy-and-white title treatment to the proposal cover."""
+    cover = document.add_table(rows=1, cols=1)
+    apply_table_grid_style(document, cover)
+    cell = cover.cell(0, 0)
+    shade_cell(cell, SADC_BLUE)
+    title = cell.paragraphs[0]
+    title.alignment = 1
+    run = title.add_run("SADC REGIONAL INNOVATION FUNDING PROPOSAL")
+    run.bold = True
+    run.font.name = "Arial"
+    run.font.size = Pt(22)
+    run.font.color.rgb = RGBColor(255, 255, 255)
+    details = document.add_paragraph()
+    details.alignment = 1
+    details.add_run(clean(proposal.get("proposal_title")) or f"Funding proposal for {clean(profile.get('innovation_name'))}").bold = True
+    prepared_for = document.add_paragraph(f"Prepared for: {proposal_value(proposal.get('funder_name'), 'Funder name', 'Name the intended funding partner.')}")
+    prepared_for.alignment = 1
+    prepared_date = document.add_paragraph(f"Prepared on: {datetime.now(timezone.utc).strftime('%d %B %Y')}")
+    prepared_date.alignment = 1
+    document.add_paragraph()
+
+
+def colour_completion_placeholders(document):
+    """Colour only bracketed completion instructions blue, including those in tables."""
+    pattern = re.compile(r"(\[TO COMPLETE:.*?\])")
+
+    def apply(paragraph):
+        text = paragraph.text
+        if "[TO COMPLETE:" not in text:
+            return
+        paragraph.clear()
+        for part in pattern.split(text):
+            if not part:
+                continue
+            run = paragraph.add_run(part)
+            if part.startswith("[TO COMPLETE:"):
+                run.font.color.rgb = RGBColor.from_string(COMPLETION_BLUE)
+                run.bold = True
+
+    def walk_table(table_doc):
+        for row in table_doc.rows:
+            for cell in row.cells:
+                for paragraph in cell.paragraphs:
+                    apply(paragraph)
+                for nested in cell.tables:
+                    walk_table(nested)
+
+    for paragraph in document.paragraphs:
+        apply(paragraph)
+    for table_doc in document.tables:
+        walk_table(table_doc)
+
+
 def proposal_value(value, item, action):
     return clean(value) if yes(value) else proposal_placeholder(item, action)
 
@@ -888,7 +1006,7 @@ def proposal_outputs(matrix):
 
 def add_proposal_table(document, headings, rows, widths=None):
     table_doc = document.add_table(rows=1, cols=len(headings))
-    table_doc.style = "Table Grid"
+    apply_table_grid_style(document, table_doc)
     header = table_doc.rows[0].cells
     for index, heading in enumerate(headings):
         header[index].text = clean(heading)
@@ -906,14 +1024,15 @@ def add_proposal_table(document, headings, rows, widths=None):
         for row in table_doc.rows:
             for index, width in enumerate(widths):
                 row.cells[index].width = Inches(width)
+    format_proposal_table(table_doc)
     document.add_paragraph()
 
 
 def build_funding_proposal_docx(matrix, profile, proposal):
     """Compile a transparent, funder-specific proposal from the governed record."""
-    document = Document()
+    document = sadc_proposal_document()
     section = document.sections[0]
-    section.top_margin = Inches(0.65)
+    section.top_margin = Inches(1.55)
     section.bottom_margin = Inches(0.65)
     section.left_margin = Inches(0.75)
     section.right_margin = Inches(0.75)
@@ -945,14 +1064,13 @@ def build_funding_proposal_docx(matrix, profile, proposal):
         )
     outputs = proposal_outputs(matrix)
 
-    document.add_heading(clean(proposal.get("proposal_title")) or f"Funding proposal: {name}", 0)
-    document.add_paragraph("ARC D4 Programme — innovation-specific financing proposition")
-    document.add_paragraph(f"Prepared for: {funder}")
-    document.add_paragraph(f"Prepared on: {datetime.now(timezone.utc).strftime('%d %B %Y')}")
+    add_sadc_cover(document, proposal, profile)
+    document.add_paragraph("ARC D4 Programme innovation-specific financing proposition")
     document.add_paragraph(
         "Controlled draft for funder discussion. Square-bracketed TO COMPLETE entries identify information that must be confirmed before external submission. "
         "Amounts are planning estimates unless national pricing is attached."
     )
+    document.add_page_break()
 
     document.add_heading("1. Executive summary", level=1)
     request = proposal_money(proposal.get("requested_amount"))
@@ -1083,10 +1201,11 @@ def build_funding_proposal_docx(matrix, profile, proposal):
         "Implementation plan, results framework, risk register and safeguards record",
         "ARC D4 programme/output-product pack and relevant institutional decision records",
     ]:
-        document.add_paragraph(item, style="List Bullet")
+        document.add_paragraph("• " + item)
     document.add_paragraph(
         "Submission control: this document is a compiled proposal draft. It must be checked against the funder's eligibility, approved national pricing, institutional authority and the final signed delivery arrangements before external submission."
     )
+    colour_completion_placeholders(document)
     buffer = BytesIO()
     document.save(buffer)
     return buffer.getvalue()
