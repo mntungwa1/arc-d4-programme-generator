@@ -696,7 +696,7 @@ def show_product_readiness_callout(matrix):
             st.info("Completing this checklist prepares the product for verification. The analyst must close the fact in the governed matrix; the Readiness Board then updates the final submission status.")
 
 
-def show_submission_ready_report(matrix):
+def show_submission_ready_report(matrix, profile=None):
     """Present the governed Matrix 7 outcome as a submission-ready narrative."""
     portfolio = table(matrix, "06_Portfolio")
     board = readiness_board(matrix)
@@ -780,6 +780,9 @@ def show_submission_ready_report(matrix):
         "The programme can be submitted as a complete, evidence-led D3 delivery package. The ranked portfolio, product "
         "pack and governance trail are available in the matrix-backed platform; subsequent Member State and partner actions "
         "are clearly assigned as implementation handovers rather than unresolved programme work.")
+    st.divider()
+    with st.expander("Compile a funding proposal for the selected innovation"):
+        show_funding_proposal_workspace(matrix, profile or {})
 
 
 def proposal_money(value):
@@ -1210,6 +1213,6 @@ elif workspace == "Products and readiness":
         st.dataframe(table(matrix, "28_Resolution_Layer")[["ID", "Resolver", "Mode"]], hide_index=True, use_container_width=True)
 
 elif workspace == "Submission-ready report":
-    show_submission_ready_report(matrix)
+    show_submission_ready_report(matrix, profile)
 else:
     show_funding_proposal_workspace(matrix, profile)
