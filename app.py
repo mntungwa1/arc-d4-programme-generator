@@ -9,7 +9,9 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 from docx import Document
-from docx.shared import Inches, Pt
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
+from docx.shared import Inches, Pt, RGBColor
 from supabase import create_client
 
 st.set_page_config(page_title="ARC D4 Delivery Platform", page_icon="◆", layout="wide")
@@ -794,6 +796,73 @@ def proposal_money(value):
     return f"USD {number:,.0f}" if number else "To be costed"
 
 
+def proposal_placeholder(item, action):
+    """Use a visible controlled placeholder instead of inventing missing evidence."""
+    return f"[TO COMPLETE: {item}. {action}]"
+
+
+def proposal_value(value, item, action):
+    return clean(value) if yes(value) else proposal_placeholder(item, action)
+
+
+def proposal_cost_range(low, high, item, action):
+    if float(low or 0) > 0 or float(high or 0) > 0:
+        return f"{proposal_money(low)} - {proposal_money(high)}"
+    return proposal_placeholder(item, action)
+
+
+def proposal_completion_register(matrix, profile, proposal):
+    """List the specific evidence still required for an external funding submission."""
+    register = []
+    required_profile = [
+        ("description", "Innovation description", "Explain what the innovation does, intended users and DRM function."),
+        ("innovation_type", "Innovation type", "Classify the innovation as Tech, Non-tech or Hybrid."),
+        ("lead_institution", "Lead institution", "Name the accountable institution and confirm its mandate."),
+        ("delivery_counterpart", "Delivery counterpart", "Name the organisation responsible for delivery."),
+        ("recurrent_cost_custodian", "Recurrent-cost custodian", "Confirm the responsible institution, budget line and post-investment arrangements."),
+        ("mandate_level", "Mandate level", "Confirm whether the operating mandate is regional, national or last-mile."),
+        ("innovation_url", "Evidence or innovation URL", "Attach the source record, technical evidence or authoritative innovation reference."),
+    ]
+    for field, item, action in required_profile:
+        if not yes(profile.get(field)):
+            register.append([item, action, "D3 investment-ready profile"])
+    proposal_items = [
+        ("funder_alignment", "Funder alignment", "State the call, objective, theme or investment priority this proposal addresses."),
+        ("problem_statement", "Development problem statement", "State the problem, exposed population, geography and evidence basis."),
+        ("expected_results", "Results framework", "Provide indicators, baselines, targets, disaggregation and verification sources."),
+    ]
+    for field, item, action in proposal_items:
+        if not yes(proposal.get(field)):
+            register.append([item, action, "Funder-specific proposal"])
+    if not cost_analysis_complete(profile):
+        register.append([
+            "Nationally costed financing case",
+            "Complete the Annex R.1 analysis and replace planning bands with national prices, quantities, assumptions and budget narrative.",
+            "Cost and value-for-money case",
+        ])
+    components = table(matrix, "07_IRIP_Components")
+    for _, item in components.iterrows():
+        number = clean(item.get("#"))
+        component = clean(item.get("Component"))
+        if number and not yes(profile.get(f"irip_{number}")):
+            register.append([
+                f"Investment-ready profile component {number}: {component}",
+                "Complete the controlled profile evidence and identify the accountable source or decision route.",
+                "D3 investment-ready profile",
+            ])
+    criteria = table(matrix, "05_IPI_Criteria")
+    if not criteria.empty and "Symbol" in criteria.columns:
+        for _, criterion in criteria.iterrows():
+            code = clean(criterion.get("Symbol"))
+            if code and not yes(profile.get(f"score_{code}")):
+                register.append([
+                    f"IPI determination {code}",
+                    "Record a supported 0-10 score through the authorised determination session; do not replace a pending score with zero or a fabricated value.",
+                    "D2/D3 evidence record",
+                ])
+    return register
+
+
 def proposal_filename(value):
     safe = "".join(character if character.isalnum() else "_" for character in clean(value))
     return (safe.strip("_") or "innovation")[:80] + "_funding_proposal.docx"
@@ -829,6 +898,10 @@ def add_proposal_table(document, headings, rows, widths=None):
         cells = table_doc.add_row().cells
         for index, value in enumerate(row):
             cells[index].text = clean(value)
+    for row in table_doc.rows:
+        properties = row._tr.get_or_add_trPr()
+        cant_split = OxmlElement("w:cantSplit")
+        properties.append(cant_split)
     if widths:
         for row in table_doc.rows:
             for index, width in enumerate(widths):
@@ -845,23 +918,41 @@ def build_funding_proposal_docx(matrix, profile, proposal):
     section.left_margin = Inches(0.75)
     section.right_margin = Inches(0.75)
     normal = document.styles["Normal"]
-    normal.font.name = "Aptos"
-    normal.font.size = Pt(10)
+    normal.font.name = "Arial"
+    normal.font.size = Pt(11)
+    for style_name in ["Title", "Heading 1", "Heading 2"]:
+        style = document.styles[style_name]
+        style.font.name = "Arial"
+        style.font.color.rgb = RGBColor(0, 0, 0)
+    title_properties = document.styles["Title"]._element.get_or_add_pPr()
+    title_border = title_properties.find(qn("w:pBdr"))
+    if title_border is not None:
+        title_properties.remove(title_border)
 
     name = clean(profile.get("innovation_name")) or "Selected innovation"
     funder = clean(proposal.get("funder_name")) or "Prospective funding partner"
-    scope = clean(proposal.get("implementation_scope")) or "To be agreed with the funding partner"
+    scope = proposal_value(
+        proposal.get("implementation_scope"),
+        "Implementation geography and scope",
+        "State the Member State, regional scope, target areas and intended beneficiary coverage.",
+    )
     duration = int(proposal.get("duration_months") or 0)
     description = clean(profile.get("description")) or clean(proposal.get("innovation_summary"))
     if not description:
-        description = "The innovation profile requires a concise description of the solution, intended users and DRM function before submission."
+        description = proposal_placeholder(
+            "Innovation description",
+            "Describe the solution, intended users, DRM function and evidence of need.",
+        )
     outputs = proposal_outputs(matrix)
 
     document.add_heading(clean(proposal.get("proposal_title")) or f"Funding proposal: {name}", 0)
     document.add_paragraph("ARC D4 Programme — innovation-specific financing proposition")
     document.add_paragraph(f"Prepared for: {funder}")
     document.add_paragraph(f"Prepared on: {datetime.now(timezone.utc).strftime('%d %B %Y')}")
-    document.add_paragraph("Controlled draft for funder discussion. Amounts are planning estimates unless national pricing is attached.")
+    document.add_paragraph(
+        "Controlled draft for funder discussion. Square-bracketed TO COMPLETE entries identify information that must be confirmed before external submission. "
+        "Amounts are planning estimates unless national pricing is attached."
+    )
 
     document.add_heading("1. Executive summary", level=1)
     request = proposal_money(proposal.get("requested_amount"))
@@ -871,25 +962,31 @@ def build_funding_proposal_docx(matrix, profile, proposal):
         f"over {duration or 'an agreed'} month implementation period in {scope}. {description}"
     )
     document.add_paragraph(
-        clean(proposal.get("funder_alignment")) or
-        "The proposal will be refined with the funder to confirm its strategic objectives, geographic focus, eligibility rules and reporting requirements."
+        proposal_value(
+            proposal.get("funder_alignment"),
+            "Funder alignment",
+            "State the funder call, strategic objective, thematic window and eligibility link.",
+        )
     )
 
     document.add_heading("2. Innovation, problem and proposed response", level=1)
     document.add_heading("Innovation profile", level=2)
     add_proposal_table(document, ["Field", "Controlled record"], [
         ["Innovation", name],
-        ["Innovation type", clean(profile.get("innovation_type")) or "To be confirmed"],
+        ["Innovation type", proposal_value(profile.get("innovation_type"), "Innovation type", "Classify as Tech, Non-tech or Hybrid.")],
         ["Implementation scope", scope],
-        ["Lead institution", clean(profile.get("lead_institution")) or "To be confirmed"],
-        ["Delivery counterpart", clean(profile.get("delivery_counterpart")) or "To be confirmed"],
-        ["Mandate level", clean(profile.get("mandate_level")) or "To be confirmed"],
-        ["Evidence / innovation URL", clean(profile.get("innovation_url")) or "To be attached"],
+        ["Lead institution", proposal_value(profile.get("lead_institution"), "Lead institution", "Name the accountable institution and confirm its authority.")],
+        ["Delivery counterpart", proposal_value(profile.get("delivery_counterpart"), "Delivery counterpart", "Name the implementing organisation and delivery role.")],
+        ["Mandate level", proposal_value(profile.get("mandate_level"), "Mandate level", "Confirm the regional, national or last-mile operating mandate.")],
+        ["Evidence / innovation URL", proposal_value(profile.get("innovation_url"), "Evidence or innovation URL", "Attach an authoritative source, technical record or evidence link.")],
     ], widths=[1.8, 5.6])
     document.add_heading("Development challenge and response", level=2)
     document.add_paragraph(
-        clean(proposal.get("problem_statement")) or
-        "Define the priority DRM problem, affected populations, geographic exposure and the evidence that this intervention will address before submitting to a funder."
+        proposal_value(
+            proposal.get("problem_statement"),
+            "Development problem statement",
+            "State the priority DRM problem, affected populations, geography, gender and inclusion implications, and evidence basis.",
+        )
     )
     document.add_paragraph(
         "The proposed response is to operationalise the selected innovation through the governed D2/D3 pathway: evidence-led prioritisation, an investment-ready profile, cost analysis, accountable delivery arrangements, safeguards and results tracking."
@@ -903,16 +1000,16 @@ def build_funding_proposal_docx(matrix, profile, proposal):
     if output_rows:
         add_proposal_table(document, ["Output", "Deliverable", "Contribution to the proposal"], output_rows, widths=[0.8, 2.6, 4.0])
     else:
-        document.add_paragraph("Attach the controlled ARC D4 output-product register before submission.")
+        document.add_paragraph(proposal_placeholder("ARC D4 output-product register", "Attach the controlled output-product register before submission."))
 
     document.add_heading("4. Delivery approach, governance and timeline", level=1)
     document.add_paragraph(
         "Delivery will follow the D3 implementation pathway, with the lead institution accountable for the innovation record, the delivery counterpart responsible for field execution, and the recurrent-cost custodian responsible for post-investment operating arrangements."
     )
     add_proposal_table(document, ["Period", "Indicative milestone", "Accountability"], [
-        ["Months 1–3", "Inception, national-price validation, delivery planning and safeguards confirmation", clean(profile.get("lead_institution")) or "Lead institution"],
-        ["Months 4–" + str(duration or 12), "Implementation, technical support, output production and results monitoring", clean(profile.get("delivery_counterpart")) or "Delivery counterpart"],
-        ["Close-out", "Handover, recurrent-cost confirmation, learning and funder reporting", clean(profile.get("recurrent_cost_custodian")) or "Recurrent-cost custodian"],
+        ["Months 1–3", "Inception, national-price validation, delivery planning and safeguards confirmation", proposal_value(profile.get("lead_institution"), "Lead institution", "Confirm accountable lead.")],
+        ["Months 4–" + str(duration or 12), "Implementation, technical support, output production and results monitoring", proposal_value(profile.get("delivery_counterpart"), "Delivery counterpart", "Confirm implementing organisation.")],
+        ["Close-out", "Handover, recurrent-cost confirmation, learning and funder reporting", proposal_value(profile.get("recurrent_cost_custodian"), "Recurrent-cost custodian", "Confirm institutional ownership and budget route.")],
     ], widths=[1.2, 4.4, 1.8])
 
     document.add_heading("5. Financing request, cost and value for money", level=1)
@@ -922,13 +1019,16 @@ def build_funding_proposal_docx(matrix, profile, proposal):
     recurrent_high = profile.get("cost_recurrent_high")
     add_proposal_table(document, ["Cost element", "Planning range / treatment", "Evidence basis"], [
         ["Funding request", request, clean(proposal.get("funding_instrument")) or "To be agreed"],
-        ["Set-up investment", f"{proposal_money(setup_low)} – {proposal_money(setup_high)}", clean(profile.get("cost_estimate_class")) or "To be costed"],
-        ["Annual recurrent cost", f"{proposal_money(recurrent_low)} – {proposal_money(recurrent_high)} ({clean(profile.get('cost_recurrent_unit')) or 'unit to be confirmed'})", clean(profile.get("cost_confidence")) or "Confidence to be assessed"],
-        ["Cost basis", clean(profile.get("cost_basis")) or "National pricing required", clean(profile.get("cost_archetype")) or "Cost archetype to be selected"],
+        ["Set-up investment", proposal_cost_range(setup_low, setup_high, "Set-up investment", "Provide national quantities, unit rates and cost assumptions."), proposal_value(profile.get("cost_estimate_class"), "Cost estimate class", "Identify whether this is a national price estimate or costed financing proposal.")],
+        ["Annual recurrent cost", proposal_cost_range(recurrent_low, recurrent_high, "Annual recurrent cost", "Provide lifecycle operating costs, cost unit and responsible custodian."), proposal_value(profile.get("cost_confidence"), "Cost confidence", "Record the confidence basis for the estimate.")],
+        ["Cost basis", proposal_value(profile.get("cost_basis"), "Cost basis", "Provide source, price date, quantities, assumptions and currency."), proposal_value(profile.get("cost_archetype"), "Cost archetype", "Select the relevant cost archetype.")],
     ], widths=[1.6, 3.2, 2.6])
     document.add_paragraph(
-        clean(profile.get("cost_rationale")) or
-        "Complete the Annex R.1 cost analysis and national-price validation before any financing commitment. Comparative bands are planning inputs and are not quotations or approved budgets."
+        proposal_value(
+            profile.get("cost_rationale"),
+            "Cost and value-for-money rationale",
+            "Explain why the selected solution represents value for money and complete national-price validation.",
+        )
     )
     document.add_paragraph(
         "Value for money will be assessed through the defined delivery outputs, implementation feasibility, recurrent-cost ownership, targeted risk-reduction contribution and transparent monitoring evidence."
@@ -936,14 +1036,17 @@ def build_funding_proposal_docx(matrix, profile, proposal):
 
     document.add_heading("6. Results, safeguards and sustainability", level=1)
     document.add_paragraph(
-        clean(proposal.get("expected_results")) or
-        "Specify measurable beneficiary, systems and risk-reduction results with baselines, targets, disaggregation and verification sources in the funder-facing results framework."
+        proposal_value(
+            proposal.get("expected_results"),
+            "Results framework",
+            "State indicators, baselines, targets, disaggregation, verification sources and reporting frequency.",
+        )
     )
     document.add_paragraph(
         "The proposal will apply the ARC D4 safeguards and inclusion approach, including gender, equity and social inclusion responsiveness, accessibility, feedback arrangements and non-digital continuity where relevant."
     )
     document.add_paragraph(
-        f"Sustainability depends on the named recurrent-cost custodian ({clean(profile.get('recurrent_cost_custodian')) or 'to be confirmed'}), national ownership, institutional mandate and an agreed operating budget or financing route."
+        f"Sustainability depends on the named recurrent-cost custodian ({proposal_value(profile.get('recurrent_cost_custodian'), 'Recurrent-cost custodian', 'Confirm the responsible institution, budget line and post-investment operating arrangement.')}), national ownership, institutional mandate and an agreed operating budget or financing route."
     )
 
     document.add_heading("7. Key risks and mitigation", level=1)
@@ -954,7 +1057,25 @@ def build_funding_proposal_docx(matrix, profile, proposal):
         ["Local adoption conditions change", "Retain the Member State decision right and update the implementation plan through the authorised focal point."],
     ], widths=[2.6, 4.8])
 
-    document.add_heading("8. Attachments for the funder", level=1)
+    document.add_heading("8. Proposal completion register", level=1)
+    completion_rows = proposal_completion_register(matrix, profile, proposal)
+    if completion_rows:
+        document.add_paragraph(
+            "The following items are incomplete in the controlled record. They are intentionally retained as placeholders rather than being inferred or fabricated. "
+            "They must be resolved through the stated evidence or decision route before external submission."
+        )
+        add_proposal_table(
+            document,
+            ["Information still required", "Required completion action", "Controlled route"],
+            completion_rows,
+            widths=[2.0, 3.8, 1.6],
+        )
+    else:
+        document.add_paragraph(
+            "No missing fields were detected in the visible controlled record. Confirm the selected funder's template, eligibility rules, national pricing and institutional approvals before external submission."
+        )
+
+    document.add_heading("9. Attachments for the funder", level=1)
     for item in [
         "Innovation Priority Index and D2/D3 evidence record",
         "Investment-ready innovation profile and supporting evidence links",
