@@ -24,6 +24,10 @@ APP_URL = "https://arc-d4-programme-generator-c7qdwgesqvnwjafgvpxgat.streamlit.a
 ADMIN_EMAILS = {"dingaan@academyrc.co.za", "drcliff@academyrc.co.za"}
 BOOK = Path(__file__).parent / "ARC_D4_Automation_Matrix.b64"
 SADC_PROPOSAL_TEMPLATE = Path(__file__).parent / "SADC_Proposal_Template.b64"
+SADC_PROPOSAL_TEMPLATE_PARTS = [
+    Path(__file__).parent / f"SADC_Proposal_Template.part{number:02d}"
+    for number in range(1, 7)
+]
 SADC_BLUE = "003E78"
 COMPLETION_BLUE = "0070C0"
 
@@ -809,7 +813,14 @@ def proposal_placeholder(item, action):
 def sadc_proposal_document():
     """Start a proposal on the supplied SADC template while removing SOP body text."""
     if SADC_PROPOSAL_TEMPLATE.exists():
-        document = Document(BytesIO(base64.b64decode(SADC_PROPOSAL_TEMPLATE.read_text())))
+        # Parts prevent a large template asset from being truncated by the
+        # repository contents API. The legacy single-file asset is retained
+        # only as a local fallback.
+        encoded_parts = [part.read_text(encoding="utf-8") for part in SADC_PROPOSAL_TEMPLATE_PARTS if part.exists()]
+        encoded = "".join(encoded_parts) if encoded_parts else SADC_PROPOSAL_TEMPLATE.read_text(encoding="utf-8")
+        encoded = re.sub(r"\s+", "", encoded)
+        encoded += "=" * (-len(encoded) % 4)
+        document = Document(BytesIO(base64.b64decode(encoded)))
         body = document._element.body
         for child in list(body):
             if child.tag != qn("w:sectPr"):
