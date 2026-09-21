@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import base64
 import re
+import zipfile
 from datetime import datetime, timezone
 from io import BytesIO
 from pathlib import Path
@@ -28,6 +29,18 @@ SADC_PROPOSAL_TEMPLATE_PARTS = [
     Path(__file__).parent / f"SADC_Proposal_Template.part{number:02d}"
     for number in range(1, 7)
 ]
+SUBMISSION_PRODUCT_TEMPLATES = {
+    "P1": ("Regional Programme Document", "T1_Regional_Programme_Document(1).docx"),
+    "P2": ("Project Concept Note", "T2_Project_Concept_Note(1).docx"),
+    "P3": ("Implementation Plan", "T3_Implementation_Plan(1).docx"),
+    "P4": ("Validation Workshop Pack", "T4_Validation_Workshop_Pack(1).docx"),
+    "P5": ("Summary Brief", "T5_Summary_Brief(1).docx"),
+    "P6": ("Member State Adoption Plan", "T6_Member_State_Adoption_Plan(1).docx"),
+    "P7": ("Public Warning and Communication Plan", "T7_Public_Warning_Communication_Plan(1).docx"),
+    "P8": ("Terms of Reference", "T8_Terms_of_Reference(1).docx"),
+    "P9": ("Completeness Annex", "T9_Completeness_Annex(1).docx"),
+}
+SUBMISSION_PRODUCT_TEMPLATE_ARCHIVE = Path(__file__).parent / "Submission_Product_Templates.zip.b64"
 SADC_BLUE = "003E78"
 COMPLETION_BLUE = "0070C0"
 
@@ -767,6 +780,35 @@ def show_submission_ready_report(matrix, profile=None):
         st.caption("Governed product definitions")
         st.dataframe(products, hide_index=True, use_container_width=True, height=260)
 
+    st.markdown("### Innovation-specific ready products")
+    selected_innovation = profile_value(profile or {}, "innovation_name", "name")
+    if not selected_innovation:
+        st.info("Select an innovation in the left-hand innovation register to prepare its P1-P9 submission products.")
+    else:
+        st.write(
+            f"Each button below creates the supplied report template populated with the controlled record for **{selected_innovation}**. "
+            "Any information that still needs a source or decision remains in bold blue inside the downloaded document.")
+        for start in range(0, len(SUBMISSION_PRODUCT_TEMPLATES), 3):
+            columns = st.columns(3)
+            for column, product_code in zip(columns, list(SUBMISSION_PRODUCT_TEMPLATES)[start:start + 3]):
+                product_name, _ = SUBMISSION_PRODUCT_TEMPLATES[product_code]
+                with column:
+                    st.markdown(f"**{product_code} — {product_name}**")
+                    if product_code == "P4":
+                        st.caption("Manual workshop tool; it does not affect programme-delivery readiness.")
+                    try:
+                        product_docx = build_submission_product_docx(matrix, profile or {}, product_code)
+                        st.download_button(
+                            f"Download {product_code}",
+                            data=product_docx,
+                            file_name=product_filename(product_code, selected_innovation),
+                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                            key=f"download_submission_{product_code}_{selected_innovation}",
+                            use_container_width=True,
+                        )
+                    except Exception as exc:
+                        st.error(f"{product_code} template could not be prepared: {exc}")
+
     st.markdown("### 4. D3 final readiness line")
     st.write(
         "The submission is supported by a completed score and tier record, documented gap-closure logic, investment-ready "
@@ -928,6 +970,154 @@ def colour_completion_placeholders(document):
         apply(paragraph)
     for table_doc in document.tables:
         walk_table(table_doc)
+
+
+def remove_docx_paragraph(paragraph):
+    """Remove a template-guidance paragraph without disturbing the document style."""
+    paragraph._element.getparent().remove(paragraph._element)
+
+
+def walk_docx_paragraphs(document):
+    """Yield body and nested-table paragraphs in a Word document."""
+    for paragraph in document.paragraphs:
+        yield paragraph
+
+    def walk_table(table_doc):
+        for row in table_doc.rows:
+            for cell in row.cells:
+                for paragraph in cell.paragraphs:
+                    yield paragraph
+                for nested in cell.tables:
+                    yield from walk_table(nested)
+
+    for table_doc in document.tables:
+        yield from walk_table(table_doc)
+
+
+def colour_template_fields(document):
+    """Make every unresolved square-bracketed template field visibly blue."""
+    pattern = re.compile(r"(\[[^\]]+\])")
+    for paragraph in walk_docx_paragraphs(document):
+        text = paragraph.text
+        if "[" not in text or "]" not in text:
+            continue
+        paragraph.clear()
+        for part in pattern.split(text):
+            if not part:
+                continue
+            run = paragraph.add_run(part)
+            if part.startswith("[") and part.endswith("]"):
+                run.font.color.rgb = RGBColor.from_string(COMPLETION_BLUE)
+                run.bold = True
+
+
+def prune_product_template_guidance(document):
+    """Keep the supplied report body but remove author-only template instructions."""
+    body_started = False
+    for paragraph in list(document.paragraphs):
+        text = clean(paragraph.text)
+        if not text:
+            continue
+        if re.match(r"^\d+\.\s", text) or text in {"Cover information", "Innovation and country", "The six steps", "The situation"} or text.startswith("[A single sentence"):
+            body_started = True
+        if body_started:
+            continue
+        if (
+            text.startswith("TEMPLATE T")
+            or text == "How to use this template"
+            or text.startswith("•")
+            or text.startswith("Write so that")
+        ):
+            remove_docx_paragraph(paragraph)
+
+
+def product_template_document(product_code):
+    """Load a supplied submission-product template from its deployed asset."""
+    _, filename = SUBMISSION_PRODUCT_TEMPLATES[product_code]
+    if not SUBMISSION_PRODUCT_TEMPLATE_ARCHIVE.exists():
+        raise FileNotFoundError("The submission-product template archive is not available in this deployment.")
+    encoded = re.sub(r"\s+", "", SUBMISSION_PRODUCT_TEMPLATE_ARCHIVE.read_text(encoding="utf-8"))
+    encoded += "=" * (-len(encoded) % 4)
+    with zipfile.ZipFile(BytesIO(base64.b64decode(encoded))) as archive:
+        return Document(BytesIO(archive.read(filename)))
+
+
+def profile_value(profile, *keys):
+    for key in keys:
+        value = clean(profile.get(key))
+        if yes(value):
+            return value
+    return ""
+
+
+def selected_innovation_record(matrix, profile):
+    """Return the selected portfolio row so the product remains innovation-specific."""
+    innovation = profile_value(profile, "innovation_name", "name")
+    portfolio = table(matrix, "06_Portfolio")
+    if innovation and "Innovation" in portfolio.columns:
+        selected = portfolio.loc[portfolio["Innovation"].astype(str).str.strip().str.casefold().eq(innovation.casefold())]
+        if not selected.empty:
+            return selected.iloc[0].to_dict()
+    return {}
+
+
+def replace_template_values(document, replacements):
+    """Populate only sourced fields and retain all other template requirements visibly."""
+    for paragraph in walk_docx_paragraphs(document):
+        for run in paragraph.runs:
+            for marker, value in replacements.items():
+                if marker in run.text:
+                    run.text = run.text.replace(marker, value)
+
+
+def product_filename(product_code, innovation):
+    safe = re.sub(r"[^A-Za-z0-9]+", "_", innovation).strip("_") or "innovation"
+    return f"ARC_D4_{product_code}_{safe}.docx"
+
+
+def build_submission_product_docx(matrix, profile, product_code):
+    """Compile one supplied P1-P9 template for the currently selected innovation."""
+    product_name, _ = SUBMISSION_PRODUCT_TEMPLATES[product_code]
+    document = product_template_document(product_code)
+    prune_product_template_guidance(document)
+    innovation = profile_value(profile, "innovation_name", "name") or proposal_placeholder("Selected innovation", "Select an innovation before downloading this product.")
+    description = profile_value(profile, "description", "innovation_description") or proposal_placeholder("Innovation description", "Add the selected innovation's description in Workstream D.")
+    innovation_url = profile_value(profile, "innovation_url", "url", "source_url") or proposal_placeholder("Innovation URL", "Add an authoritative source or innovation record URL.")
+    record = selected_innovation_record(matrix, profile)
+    ipi = clean(record.get("IPI v2.0 (computed)")) or proposal_placeholder("IPI score", "Confirm the controlled portfolio score.")
+    confidence = clean(record.get("Confidence")) or proposal_placeholder("Evidence confidence", "Record the supporting evidence confidence.")
+    context = document.add_paragraph()
+    context.add_run("Innovation-specific controlled product").bold = True
+    context.add_run(f" | {product_code} {product_name}")
+    details = document.add_table(rows=1, cols=2)
+    details.cell(0, 0).text = "Selected innovation record"
+    details.cell(0, 1).text = "Entry"
+    for label, value in [
+        ("Innovation", innovation),
+        ("Innovation description", description),
+        ("Innovation URL", innovation_url),
+        ("Innovation Priority Index", ipi),
+        ("Evidence confidence", confidence),
+    ]:
+        cells = details.add_row().cells
+        cells[0].text = label
+        cells[1].text = value
+    format_proposal_table(details)
+    first = next((paragraph for paragraph in document.paragraphs if clean(paragraph.text)), None)
+    if first is not None:
+        first._p.addnext(details._tbl)
+        first._p.addnext(context._p)
+    replacements = {
+        "[Innovation]": innovation,
+        "[Title]": f"{innovation} - {product_name}",
+        "[Description]": description,
+        "[Summary]": description,
+    }
+    replace_template_values(document, replacements)
+    colour_template_fields(document)
+    buffer = BytesIO()
+    document.save(buffer)
+    return buffer.getvalue()
 
 
 def proposal_value(value, item, action):
