@@ -1,1 +1,6 @@
-c3RyZWFtbGl0Pj0xLjM5CnBhbmRhcz49Mi4yCm9wZW5weXhsPj0zLjEKc3VwYWJhc2U+PTIuMApweXRob24tZG9jeD49MS4xCmRvY3h0cGw+PTAuMTgK
+streamlit>=1.39
+pandas>=2.2
+openpyxl>=3.1
+supabase>=2.0
+python-docx>=1.1
+docxtpl>=0.18
