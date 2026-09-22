@@ -727,23 +727,8 @@ def show_product_readiness_callout(matrix):
             st.info("Completing this checklist prepares the product for verification. The analyst must close the fact in the governed matrix; the Readiness Board then updates the final submission status.")
 
 
-def show_submission_ready_report(matrix, profile=None):
-    """Present the governed Matrix 7 outcome as a submission-ready narrative."""
-    portfolio = table(matrix, "06_Portfolio")
-    board = readiness_board(matrix)
-    facts = table(matrix, "40_Outstanding_Facts")
-    products = table(matrix, "11_Output_Products")
-    score_column = "IPI v2.0 (computed)"
-    scores = pd.to_numeric(portfolio.get(score_column, pd.Series(dtype=float)), errors="coerce")
-    scored = portfolio.loc[scores.notna()].copy()
-    scored[score_column] = scores[scores.notna()]
-    top_ten = scored.sort_values(score_column, ascending=False).head(10)
-    ready_count = int(board.get("Submission", pd.Series(dtype=str)).astype(str).str.strip().str.lower().eq("ready").sum())
-    handovers = facts.loc[
-        facts.get("Status", pd.Series(dtype=str)).astype(str).str.contains("handover", case=False, na=False)
-    ].copy()
-
-    st.subheader("Submission-ready results")
+def show_submission_overview(portfolio, board, products, scored, top_ten, ready_count, scores, score_column):
+    """Show the optional programme and portfolio narrative above the product workspace."""
     st.success(
         "Matrix 7 records a complete D3 programme delivery position. The portfolio is scored, "
         "the submission products are ready, and implementation-specific actions are retained as handovers."
@@ -787,6 +772,27 @@ def show_submission_ready_report(matrix, profile=None):
         st.caption("Governed product definitions")
         st.dataframe(products, hide_index=True, use_container_width=True, height=260)
 
+
+def show_submission_ready_report(matrix, profile=None):
+    """Present the governed Matrix 7 outcome as a submission-ready narrative."""
+    portfolio = table(matrix, "06_Portfolio")
+    board = readiness_board(matrix)
+    facts = table(matrix, "40_Outstanding_Facts")
+    products = table(matrix, "11_Output_Products")
+    score_column = "IPI v2.0 (computed)"
+    scores = pd.to_numeric(portfolio.get(score_column, pd.Series(dtype=float)), errors="coerce")
+    scored = portfolio.loc[scores.notna()].copy()
+    scored[score_column] = scores[scores.notna()]
+    top_ten = scored.sort_values(score_column, ascending=False).head(10)
+    ready_count = int(board.get("Submission", pd.Series(dtype=str)).astype(str).str.strip().str.lower().eq("ready").sum())
+    handovers = facts.loc[
+        facts.get("Status", pd.Series(dtype=str)).astype(str).str.contains("handover", case=False, na=False)
+    ].copy()
+
+    st.subheader("Submission-ready results")
+    with st.expander("Programme and portfolio write-up", expanded=False):
+        show_submission_overview(portfolio, board, products, scored, top_ten, ready_count, scores, score_column)
+
     st.markdown("### Innovation-specific ready products")
     selected_innovation = profile_value(profile or {}, "innovation_name", "name")
     if not selected_innovation:
@@ -825,14 +831,14 @@ def show_submission_ready_report(matrix, profile=None):
         selected_preview = st.session_state.get("submission_preview_product")
         if selected_preview in SUBMISSION_PRODUCT_TEMPLATES:
             preview_name, _ = SUBMISSION_PRODUCT_TEMPLATES[selected_preview]
-            st.markdown("### Full-width document preview")
-            st.caption(f"{selected_preview} — {preview_name}. Select another Preview button above to change the document.")
-            try:
-                preview_docx = build_filled_submission_product_docx(matrix, profile or {}, selected_preview)
-                preview_pdf = render_submission_product_preview_pdf(preview_docx)
-                st.pdf(preview_pdf, height="stretch", key=f"pdf_preview_{selected_preview}_{selected_innovation}")
-            except Exception as exc:
-                st.error(f"{selected_preview} preview could not be prepared: {exc}")
+            with st.expander(f"Full-width document preview — {selected_preview}", expanded=False):
+                st.caption(f"{selected_preview} — {preview_name}. Select another Preview button above to change the document.")
+                try:
+                    preview_docx = build_filled_submission_product_docx(matrix, profile or {}, selected_preview)
+                    preview_pdf = render_submission_product_preview_pdf(preview_docx)
+                    st.pdf(preview_pdf, height="stretch", key=f"pdf_preview_{selected_preview}_{selected_innovation}")
+                except Exception as exc:
+                    st.error(f"{selected_preview} preview could not be prepared: {exc}")
 
     st.markdown("### 4. D3 final readiness line")
     st.write(
