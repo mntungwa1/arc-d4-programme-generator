@@ -3,4 +3,4 @@ pandas>=2.2
 openpyxl>=3.1
 supabase>=2.0
 python-docx>=1.1
-docxtpl>=0.18
+docxtpl>=0.20,<0.21
