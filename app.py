@@ -808,7 +808,7 @@ def show_submission_ready_report(matrix, profile=None):
                         with st.expander(f"Preview {product_code}", expanded=False):
                             components.html(
                                 build_submission_product_preview_html(product_docx, product_code, selected_innovation),
-                                height=620,
+                                height=720,
                                 scrolling=True,
                             )
                         st.download_button(
@@ -1178,13 +1178,16 @@ def build_submission_product_preview_html(content, product_code, innovation_name
     document = Document(BytesIO(content))
     body = [
         "<style>"
-        "body{font-family:Arial,sans-serif;color:#172033;background:#eef2f7;margin:0;padding:18px;}"
-        ".sheet{background:#fff;max-width:900px;margin:auto;padding:42px 48px;box-shadow:0 1px 8px #bcc5d1;}"
-        "h1{font-size:23px;margin:0 0 8px;color:#14213d;}"
-        ".meta{color:#556070;font-size:13px;margin-bottom:24px;border-bottom:1px solid #d7dde6;padding-bottom:14px;}"
-        "p{font-size:14px;line-height:1.55;margin:0 0 10px;white-space:pre-wrap;}"
-        "table{width:100%;border-collapse:collapse;margin:16px 0 22px;font-size:12px;}"
-        "td{border:1px solid #cbd5e1;padding:7px;vertical-align:top;line-height:1.4;}"
+        "*{box-sizing:border-box;}"
+        "body{font-family:Arial,sans-serif;color:#172033;background:#eef2f7;margin:0;padding:clamp(8px,2vw,22px);overflow-x:hidden;}"
+        ".sheet{background:#fff;width:100%;max-width:1180px;margin:auto;padding:clamp(18px,4vw,52px);box-shadow:0 1px 8px #bcc5d1;}"
+        "h1{font-size:clamp(19px,2.4vw,27px);margin:0 0 8px;color:#14213d;}"
+        ".meta{color:#556070;font-size:clamp(12px,1.5vw,14px);margin-bottom:24px;border-bottom:1px solid #d7dde6;padding-bottom:14px;}"
+        "p{font-size:clamp(13px,1.65vw,15px);line-height:1.55;margin:0 0 10px;white-space:pre-wrap;overflow-wrap:anywhere;}"
+        ".table-wrap{width:100%;overflow-x:auto;margin:16px 0 22px;}"
+        "table{width:100%;min-width:520px;border-collapse:collapse;font-size:clamp(11px,1.45vw,13px);margin:0;}"
+        "td{border:1px solid #cbd5e1;padding:clamp(5px,1vw,9px);vertical-align:top;line-height:1.4;overflow-wrap:anywhere;}"
+        "@media (max-width:600px){.sheet{padding:18px 14px;}.meta{margin-bottom:16px;}table{min-width:460px;}}"
         "tr:first-child td{background:#e8f0f8;font-weight:700;}"
         "</style><main class='sheet'>"
         f"<h1>{escape(product_code)} document preview</h1>"
@@ -1195,7 +1198,7 @@ def build_submission_product_preview_html(content, product_code, innovation_name
         if value:
             body.append(f"<p>{escape(value)}</p>")
     for table in document.tables:
-        body.append("<table>")
+        body.append("<div class='table-wrap'><table>")
         for row in table.rows:
             body.append("<tr>")
             for cell in row.cells:
@@ -1204,7 +1207,7 @@ def build_submission_product_preview_html(content, product_code, innovation_name
                 ) or "&nbsp;"
                 body.append(f"<td>{cell_text}</td>")
             body.append("</tr>")
-        body.append("</table>")
+        body.append("</table></div>")
     body.append("</main>")
     return "".join(body)
 
