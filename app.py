@@ -2,18 +2,21 @@
 from __future__ import annotations
 
 import base64
+import inspect
 import re
-import subprocess
-import sys
 import tempfile
 import zipfile
+from html import escape
 from datetime import datetime, timezone
 from io import BytesIO
 from pathlib import Path
+from types import ModuleType
 
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 from docx import Document
+from docxtpl import DocxTemplate
 from docx.enum.table import WD_CELL_VERTICAL_ALIGNMENT
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
@@ -44,7 +47,7 @@ SUBMISSION_PRODUCT_TEMPLATES = {
     "P9": ("Completeness Annex", "T9_Completeness_Annex.docx"),
 }
 SUBMISSION_PRODUCT_TEMPLATE_ARCHIVE = Path(__file__).parent / "Submission_Product_Templates.zip.b64"
-POPULATION_SCRIPTS_ARCHIVE = Path(__file__).parent / "Population_Scripts.zip.b64"
+TEMPLATE_POPULATION_KIT = Path(__file__).parent / "SADC_Template_Population_Kit.zip.b64"
 SADC_BLUE = "003E78"
 COMPLETION_BLUE = "0070C0"
 
@@ -791,7 +794,7 @@ def show_submission_ready_report(matrix, profile=None):
     else:
         st.write(
             f"Each button below creates the supplied report template populated with the controlled record for **{selected_innovation}**. "
-            "The D2/D3 population kit compiles the governed matrix evidence directly into the downloaded document.")
+            "Each report is populated from the available D2/D3 and costing records. Where a required national or Member State decision sits outside the Programme's authority, the report names the responsible holder and action instead of leaving a placeholder.")
         for start in range(0, len(SUBMISSION_PRODUCT_TEMPLATES), 3):
             columns = st.columns(3)
             for column, product_code in zip(columns, list(SUBMISSION_PRODUCT_TEMPLATES)[start:start + 3]):
@@ -801,7 +804,13 @@ def show_submission_ready_report(matrix, profile=None):
                     if product_code == "P4":
                         st.caption("Manual workshop tool; it does not affect programme-delivery readiness.")
                     try:
-                        product_docx = build_submission_product_docx(matrix, profile or {}, product_code)
+                        product_docx = build_filled_submission_product_docx(matrix, profile or {}, product_code)
+                        with st.expander(f"Preview {product_code}", expanded=False):
+                            components.html(
+                                build_submission_product_preview_html(product_docx, product_code, selected_innovation),
+                                height=620,
+                                scrolling=True,
+                            )
                         st.download_button(
                             f"Download {product_code}",
                             data=product_docx,
@@ -1046,56 +1055,6 @@ def product_template_document(product_code):
         return Document(BytesIO(archive.read(filename)))
 
 
-def decoded_asset(path):
-    """Return a base64 repository asset as bytes."""
-    encoded = re.sub(r"\s+", "", path.read_text(encoding="utf-8"))
-    encoded += "=" * (-len(encoded) % 4)
-    return base64.b64decode(encoded)
-
-
-def product_population_script(product_code):
-    """Map a P-product to the supplied controlled population script."""
-    template_name = SUBMISSION_PRODUCT_TEMPLATES[product_code][1]
-    return f"{Path(template_name).stem}_populate.py"
-
-
-def portfolio_number(matrix, profile):
-    """Resolve the governed portfolio number required by innovation templates."""
-    record = selected_innovation_record(matrix, profile)
-    try:
-        return str(int(float(record.get("#"))))
-    except (TypeError, ValueError):
-        raise ValueError("The selected innovation does not have a governed portfolio number.")
-
-
-def populate_submission_product(matrix, profile, product_code):
-    """Run the supplied D2/D3 population kit against the current controlled data pack."""
-    if not POPULATION_SCRIPTS_ARCHIVE.exists():
-        raise FileNotFoundError("The D2/D3 template population kit is not available in this deployment.")
-
-    product_name, template_name = SUBMISSION_PRODUCT_TEMPLATES[product_code]
-    with tempfile.TemporaryDirectory(prefix="arc_d4_") as directory:
-        work = Path(directory)
-        matrix_path = work / "ARC_D4_Automation_Matrix.xlsx"
-        matrix_path.write_bytes(decoded_asset(BOOK))
-        template_path = work / template_name
-        output_path = work / f"ARC_D4_{product_code}.docx"
-        with zipfile.ZipFile(BytesIO(decoded_asset(SUBMISSION_PRODUCT_TEMPLATE_ARCHIVE))) as archive:
-            template_path.write_bytes(archive.read(template_name))
-        with zipfile.ZipFile(BytesIO(decoded_asset(POPULATION_SCRIPTS_ARCHIVE))) as archive:
-            script_path = work / product_population_script(product_code)
-            script_path.write_bytes(archive.read(script_path.name))
-
-        command = [sys.executable, str(script_path), "--pack", str(matrix_path), "--template", str(template_path), "--out", str(output_path)]
-        if product_code in {"P2", "P3", "P6", "P9"}:
-            command.extend(["--innovation", portfolio_number(matrix, profile)])
-        completed = subprocess.run(command, capture_output=True, text=True, timeout=45, check=False)
-        if completed.returncode != 0 or not output_path.exists():
-            detail = (completed.stderr or completed.stdout or "The population script did not create an output.").strip()
-            raise RuntimeError(f"{product_name} could not be populated: {detail}")
-        return output_path.read_bytes()
-
-
 def profile_value(profile, *keys):
     for key in keys:
         value = clean(profile.get(key))
@@ -1130,8 +1089,171 @@ def product_filename(product_code, innovation):
 
 
 def build_submission_product_docx(matrix, profile, product_code):
-    """Compile a P1-P9 product using the supplied D2/D3 controlled population kit."""
-    return populate_submission_product(matrix, profile, product_code)
+    """Compile one supplied P1-P9 template for the currently selected innovation."""
+    product_name, _ = SUBMISSION_PRODUCT_TEMPLATES[product_code]
+    document = product_template_document(product_code)
+    prune_product_template_guidance(document)
+    innovation = profile_value(profile, "innovation_name", "name") or proposal_placeholder("Selected innovation", "Select an innovation before downloading this product.")
+    description = profile_value(profile, "description", "innovation_description") or proposal_placeholder("Innovation description", "Add the selected innovation's description in Workstream D.")
+    innovation_url = profile_value(profile, "innovation_url", "url", "source_url") or proposal_placeholder("Innovation URL", "Add an authoritative source or innovation record URL.")
+    record = selected_innovation_record(matrix, profile)
+    ipi = clean(record.get("IPI v2.0 (computed)")) or proposal_placeholder("IPI score", "Confirm the controlled portfolio score.")
+    confidence = clean(record.get("Confidence")) or proposal_placeholder("Evidence confidence", "Record the supporting evidence confidence.")
+    context = document.add_paragraph()
+    context.add_run("Innovation-specific controlled product").bold = True
+    context.add_run(f" | {product_code} {product_name}")
+    details = document.add_table(rows=1, cols=2)
+    details.cell(0, 0).text = "Selected innovation record"
+    details.cell(0, 1).text = "Entry"
+    for label, value in [
+        ("Innovation", innovation),
+        ("Innovation description", description),
+        ("Innovation URL", innovation_url),
+        ("Innovation Priority Index", ipi),
+        ("Evidence confidence", confidence),
+    ]:
+        cells = details.add_row().cells
+        cells[0].text = label
+        cells[1].text = value
+    format_proposal_table(details)
+    first = next((paragraph for paragraph in document.paragraphs if clean(paragraph.text)), None)
+    if first is not None:
+        first._p.addnext(details._tbl)
+        first._p.addnext(context._p)
+    replacements = {
+        "[Innovation]": innovation,
+        "[Title]": f"{innovation} - {product_name}",
+        "[Description]": description,
+        "[Summary]": description,
+    }
+    replace_template_values(document, replacements)
+    colour_template_fields(document)
+    buffer = BytesIO()
+    document.save(buffer)
+    return buffer.getvalue()
+
+
+@st.cache_data(show_spinner=False)
+def template_population_kit_files():
+    """Read the verified D2/D3 template population kit supplied for the app."""
+    if not TEMPLATE_POPULATION_KIT.exists():
+        raise FileNotFoundError("The D2/D3 template population kit is not available in this deployment.")
+    encoded = re.sub(r"\s+", "", TEMPLATE_POPULATION_KIT.read_text(encoding="utf-8"))
+    encoded += "=" * (-len(encoded) % 4)
+    with zipfile.ZipFile(BytesIO(base64.b64decode(encoded))) as archive:
+        return {name: archive.read(name) for name in archive.namelist()}
+
+
+@st.cache_resource(show_spinner=False)
+def template_populator(script_name, script_text):
+    """Load the reviewed population routine supplied with the D2/D3 kit."""
+    module = ModuleType(f"arc_d4_{script_name.replace('.', '_')}")
+    module.__file__ = script_name
+    exec(compile(script_text, script_name, "exec"), module.__dict__)
+    return module
+
+
+def population_innovation_number(populator, pack, matrix, profile):
+    record = selected_innovation_record(matrix, profile)
+    number = record.get("#") or record.get("No.") or record.get("Number")
+    try:
+        return int(float(number))
+    except (TypeError, ValueError):
+        pass
+    selected_name = profile_value(profile, "innovation_name", "name")
+    for number in pack.numbers():
+        if clean(pack.innovation(number).get("name")).casefold() == selected_name.casefold():
+            return number
+    return None
+
+
+def document_contains_unresolved_markers(content):
+    document = Document(BytesIO(content))
+    text = "\n".join(paragraph.text for paragraph in walk_docx_paragraphs(document))
+    return bool(re.search(r"\{[{%]|\[[^\]]+\]", text))
+
+
+def build_submission_product_preview_html(content, product_code, innovation_name):
+    """Create a readable in-app preview from the same populated DOCX offered for download."""
+    document = Document(BytesIO(content))
+    body = [
+        "<style>"
+        "body{font-family:Arial,sans-serif;color:#172033;background:#eef2f7;margin:0;padding:18px;}"
+        ".sheet{background:#fff;max-width:900px;margin:auto;padding:42px 48px;box-shadow:0 1px 8px #bcc5d1;}"
+        "h1{font-size:23px;margin:0 0 8px;color:#14213d;}"
+        ".meta{color:#556070;font-size:13px;margin-bottom:24px;border-bottom:1px solid #d7dde6;padding-bottom:14px;}"
+        "p{font-size:14px;line-height:1.55;margin:0 0 10px;white-space:pre-wrap;}"
+        "table{width:100%;border-collapse:collapse;margin:16px 0 22px;font-size:12px;}"
+        "td{border:1px solid #cbd5e1;padding:7px;vertical-align:top;line-height:1.4;}"
+        "tr:first-child td{background:#e8f0f8;font-weight:700;}"
+        "</style><main class='sheet'>"
+        f"<h1>{escape(product_code)} document preview</h1>"
+        f"<div class='meta'>Innovation: {escape(str(innovation_name))}. This preview is generated from the same populated Word file available below.</div>"
+    ]
+    for paragraph in document.paragraphs:
+        value = paragraph.text.strip()
+        if value:
+            body.append(f"<p>{escape(value)}</p>")
+    for table in document.tables:
+        body.append("<table>")
+        for row in table.rows:
+            body.append("<tr>")
+            for cell in row.cells:
+                cell_text = "<br>".join(
+                    escape(paragraph.text.strip()) for paragraph in cell.paragraphs if paragraph.text.strip()
+                ) or "&nbsp;"
+                body.append(f"<td>{cell_text}</td>")
+            body.append("</tr>")
+        body.append("</table>")
+    body.append("</main>")
+    return "".join(body)
+
+
+def build_filled_submission_product_docx(matrix, profile, product_code):
+    """Use the supplied data-driven routine to create a fully populated product."""
+    files = template_population_kit_files()
+    product_name, template_name = SUBMISSION_PRODUCT_TEMPLATES[product_code]
+    script_name = f"T{product_code[1:]}_{product_name.replace(' ', '_').replace('-', '_')}_populate.txt"
+    # The supplied filenames use the exact names below; this explicit mapping
+    # avoids relying on a display label when selecting source code.
+    script_names = {
+        "P1": "T1_Regional_Programme_Document_populate.txt",
+        "P2": "T2_Project_Concept_Note_populate.txt",
+        "P3": "T3_Implementation_Plan_populate.txt",
+        "P4": "T4_Validation_Workshop_Pack_populate.txt",
+        "P5": "T5_Summary_Brief_populate.txt",
+        "P6": "T6_Member_State_Adoption_Plan_populate.txt",
+        "P7": "T7_Public_Warning_Communication_Plan_populate.txt",
+        "P8": "T8_Terms_of_Reference_populate.txt",
+        "P9": "T9_Completeness_Annex_populate.txt",
+    }
+    if template_name not in files or script_names[product_code] not in files or "ARC_D4_Automation_Matrix.xlsx" not in files:
+        raise FileNotFoundError(f"The supplied {product_code} template, population code or matrix is missing from the kit.")
+    populator = template_populator(script_names[product_code], files[script_names[product_code]].decode("utf-8"))
+    pack = populator.DataPack(BytesIO(files["ARC_D4_Automation_Matrix.xlsx"]))
+    context_builder = populator.build_context
+    parameters = list(inspect.signature(context_builder).parameters)
+    if len(parameters) == 1:
+        context = context_builder(pack)
+    else:
+        number = population_innovation_number(populator, pack, matrix, profile)
+        if number is None:
+            raise ValueError("The selected innovation is not yet in the controlled portfolio. Add it to the governed matrix before generating the fully populated product.")
+        context = context_builder(pack, number)
+    with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as source:
+        source.write(files[template_name])
+        source_path = Path(source.name)
+    try:
+        document = DocxTemplate(str(source_path))
+        document.render(context, autoescape=True)
+        output = BytesIO()
+        document.save(output)
+        content = output.getvalue()
+    finally:
+        source_path.unlink(missing_ok=True)
+    if document_contains_unresolved_markers(content):
+        raise ValueError(f"{product_code} still contains an unresolved template marker. Complete the governed source record and regenerate.")
+    return content
 
 
 def proposal_value(value, item, action):
