@@ -4,9 +4,10 @@ from __future__ import annotations
 import base64
 import inspect
 import re
+import shutil
+import subprocess
 import tempfile
 import zipfile
-from html import escape
 from datetime import datetime, timezone
 from io import BytesIO
 from pathlib import Path
@@ -829,8 +830,9 @@ def show_submission_ready_report(matrix, profile=None):
             st.caption(f"{selected_preview} — {preview_name}. Select another Preview button above to change the document.")
             try:
                 preview_docx = build_filled_submission_product_docx(matrix, profile or {}, selected_preview)
+                preview_pdf = render_submission_product_preview_pdf(preview_docx)
                 components.html(
-                    build_submission_product_preview_html(preview_docx, selected_preview, selected_innovation),
+                    build_submission_product_preview_html(preview_pdf),
                     height=900,
                     scrolling=True,
                 )
@@ -1188,43 +1190,49 @@ def document_contains_unresolved_markers(content):
     return bool(re.search(r"\{[{%]|\[[^\]]+\]", text))
 
 
-def build_submission_product_preview_html(content, product_code, innovation_name):
-    """Create a readable in-app preview from the same populated DOCX offered for download."""
-    document = Document(BytesIO(content))
-    body = [
-        "<style>"
-        "*{box-sizing:border-box;}"
-        "body{font-family:Arial,sans-serif;color:#172033;background:#eef2f7;margin:0;padding:clamp(8px,2vw,22px);overflow-x:hidden;}"
-        ".sheet{background:#fff;width:100%;max-width:1180px;margin:auto;padding:clamp(18px,4vw,52px);box-shadow:0 1px 8px #bcc5d1;}"
-        "h1{font-size:clamp(19px,2.4vw,27px);margin:0 0 8px;color:#14213d;}"
-        ".meta{color:#556070;font-size:clamp(12px,1.5vw,14px);margin-bottom:24px;border-bottom:1px solid #d7dde6;padding-bottom:14px;}"
-        "p{font-size:clamp(13px,1.65vw,15px);line-height:1.55;margin:0 0 10px;white-space:pre-wrap;overflow-wrap:anywhere;}"
-        ".table-wrap{width:100%;overflow-x:auto;margin:16px 0 22px;}"
-        "table{width:100%;min-width:520px;border-collapse:collapse;font-size:clamp(11px,1.45vw,13px);margin:0;}"
-        "td{border:1px solid #cbd5e1;padding:clamp(5px,1vw,9px);vertical-align:top;line-height:1.4;overflow-wrap:anywhere;}"
-        "@media (max-width:600px){.sheet{padding:18px 14px;}.meta{margin-bottom:16px;}table{min-width:460px;}}"
-        "tr:first-child td{background:#e8f0f8;font-weight:700;}"
-        "</style><main class='sheet'>"
-        f"<h1>{escape(product_code)} document preview</h1>"
-        f"<div class='meta'>Innovation: {escape(str(innovation_name))}. This preview is generated from the same populated Word file available below.</div>"
-    ]
-    for paragraph in document.paragraphs:
-        value = paragraph.text.strip()
-        if value:
-            body.append(f"<p>{escape(value)}</p>")
-    for table in document.tables:
-        body.append("<div class='table-wrap'><table>")
-        for row in table.rows:
-            body.append("<tr>")
-            for cell in row.cells:
-                cell_text = "<br>".join(
-                    escape(paragraph.text.strip()) for paragraph in cell.paragraphs if paragraph.text.strip()
-                ) or "&nbsp;"
-                body.append(f"<td>{cell_text}</td>")
-            body.append("</tr>")
-        body.append("</table></div>")
-    body.append("</main>")
-    return "".join(body)
+@st.cache_data(show_spinner="Rendering the Word document preview...")
+def render_submission_product_preview_pdf(docx_content):
+    """Render the generated Word document to PDF so the preview preserves its template and pagination."""
+    office = shutil.which("libreoffice") or shutil.which("soffice")
+    if not office:
+        raise RuntimeError("The document preview service is unavailable. Please refresh after deployment completes.")
+    with tempfile.TemporaryDirectory(prefix="arc_d4_preview_") as temporary_directory:
+        working_directory = Path(temporary_directory)
+        source_path = working_directory / "submission_product.docx"
+        source_path.write_bytes(docx_content)
+        profile_directory = working_directory / "office_profile"
+        profile_directory.mkdir()
+        result = subprocess.run(
+            [
+                office,
+                "--headless",
+                f"-env:UserInstallation=file://{profile_directory}",
+                "--convert-to",
+                "pdf",
+                "--outdir",
+                str(working_directory),
+                str(source_path),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=90,
+            check=False,
+        )
+        pdf_path = working_directory / "submission_product.pdf"
+        if result.returncode != 0 or not pdf_path.exists():
+            details = (result.stderr or result.stdout or "Unknown conversion error").strip()
+            raise RuntimeError(f"Could not render the document preview: {details[:300]}")
+        return pdf_path.read_bytes()
+
+
+def build_submission_product_preview_html(pdf_content):
+    """Embed the rendered PDF at the available width for a faithful in-app document preview."""
+    pdf_data = base64.b64encode(pdf_content).decode("ascii")
+    return (
+        "<style>html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#eef2f7;}"
+        "embed{display:block;width:100%;height:100vh;border:0;}</style>"
+        f"<embed src='data:application/pdf;base64,{pdf_data}' type='application/pdf'>"
+    )
 
 
 def build_filled_submission_product_docx(matrix, profile, product_code):
