@@ -4,10 +4,9 @@ from __future__ import annotations
 import base64
 import inspect
 import re
-import shutil
-import subprocess
 import tempfile
 import zipfile
+from html import escape
 from datetime import datetime, timezone
 from io import BytesIO
 from pathlib import Path
@@ -15,6 +14,7 @@ from types import ModuleType
 
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 from docx import Document
 from docxtpl import DocxTemplate
 from docx.enum.table import WD_CELL_VERTICAL_ALIGNMENT
@@ -727,8 +727,23 @@ def show_product_readiness_callout(matrix):
             st.info("Completing this checklist prepares the product for verification. The analyst must close the fact in the governed matrix; the Readiness Board then updates the final submission status.")
 
 
-def show_submission_overview(portfolio, board, products, scored, top_ten, ready_count, scores, score_column):
-    """Show the optional programme and portfolio narrative above the product workspace."""
+def show_submission_ready_report(matrix, profile=None):
+    """Present the governed Matrix 7 outcome as a submission-ready narrative."""
+    portfolio = table(matrix, "06_Portfolio")
+    board = readiness_board(matrix)
+    facts = table(matrix, "40_Outstanding_Facts")
+    products = table(matrix, "11_Output_Products")
+    score_column = "IPI v2.0 (computed)"
+    scores = pd.to_numeric(portfolio.get(score_column, pd.Series(dtype=float)), errors="coerce")
+    scored = portfolio.loc[scores.notna()].copy()
+    scored[score_column] = scores[scores.notna()]
+    top_ten = scored.sort_values(score_column, ascending=False).head(10)
+    ready_count = int(board.get("Submission", pd.Series(dtype=str)).astype(str).str.strip().str.lower().eq("ready").sum())
+    handovers = facts.loc[
+        facts.get("Status", pd.Series(dtype=str)).astype(str).str.contains("handover", case=False, na=False)
+    ].copy()
+
+    st.subheader("Submission-ready results")
     st.success(
         "Matrix 7 records a complete D3 programme delivery position. The portfolio is scored, "
         "the submission products are ready, and implementation-specific actions are retained as handovers."
@@ -772,27 +787,6 @@ def show_submission_overview(portfolio, board, products, scored, top_ten, ready_
         st.caption("Governed product definitions")
         st.dataframe(products, hide_index=True, use_container_width=True, height=260)
 
-
-def show_submission_ready_report(matrix, profile=None):
-    """Present the governed Matrix 7 outcome as a submission-ready narrative."""
-    portfolio = table(matrix, "06_Portfolio")
-    board = readiness_board(matrix)
-    facts = table(matrix, "40_Outstanding_Facts")
-    products = table(matrix, "11_Output_Products")
-    score_column = "IPI v2.0 (computed)"
-    scores = pd.to_numeric(portfolio.get(score_column, pd.Series(dtype=float)), errors="coerce")
-    scored = portfolio.loc[scores.notna()].copy()
-    scored[score_column] = scores[scores.notna()]
-    top_ten = scored.sort_values(score_column, ascending=False).head(10)
-    ready_count = int(board.get("Submission", pd.Series(dtype=str)).astype(str).str.strip().str.lower().eq("ready").sum())
-    handovers = facts.loc[
-        facts.get("Status", pd.Series(dtype=str)).astype(str).str.contains("handover", case=False, na=False)
-    ].copy()
-
-    st.subheader("Submission-ready results")
-    with st.expander("Programme and portfolio write-up", expanded=False):
-        show_submission_overview(portfolio, board, products, scored, top_ten, ready_count, scores, score_column)
-
     st.markdown("### Innovation-specific ready products")
     selected_innovation = profile_value(profile or {}, "innovation_name", "name")
     if not selected_innovation:
@@ -831,19 +825,17 @@ def show_submission_ready_report(matrix, profile=None):
         selected_preview = st.session_state.get("submission_preview_product")
         if selected_preview in SUBMISSION_PRODUCT_TEMPLATES:
             preview_name, _ = SUBMISSION_PRODUCT_TEMPLATES[selected_preview]
-            with st.expander(f"Full-width document preview — {selected_preview}", expanded=False):
-                st.caption(f"{selected_preview} — {preview_name}. Select another Preview button above to change the document.")
-                try:
-                    preview_docx = build_filled_submission_product_docx(matrix, profile or {}, selected_preview)
-                    preview_pages = render_submission_product_preview_images(preview_docx)
-                    for page_number, page_image in enumerate(preview_pages, start=1):
-                        st.image(
-                            page_image,
-                            caption=f"{selected_preview} — page {page_number} of {len(preview_pages)}",
-                            use_container_width=True,
-                        )
-                except Exception as exc:
-                    st.error(f"{selected_preview} preview could not be prepared: {exc}")
+            st.markdown("### Full-width document preview")
+            st.caption(f"{selected_preview} — {preview_name}. Select another Preview button above to change the document.")
+            try:
+                preview_docx = build_filled_submission_product_docx(matrix, profile or {}, selected_preview)
+                components.html(
+                    build_submission_product_preview_html(preview_docx, selected_preview, selected_innovation),
+                    height=900,
+                    scrolling=True,
+                )
+            except Exception as exc:
+                st.error(f"{selected_preview} preview could not be prepared: {exc}")
 
     st.markdown("### 4. D3 final readiness line")
     st.write(
@@ -1196,65 +1188,43 @@ def document_contains_unresolved_markers(content):
     return bool(re.search(r"\{[{%]|\[[^\]]+\]", text))
 
 
-@st.cache_data(show_spinner="Rendering the Word document preview...")
-def render_submission_product_preview_pdf(docx_content):
-    """Render the generated Word document to PDF so the preview preserves its template and pagination."""
-    office = shutil.which("libreoffice") or shutil.which("soffice")
-    if not office:
-        raise RuntimeError("The document preview service is unavailable. Please refresh after deployment completes.")
-    with tempfile.TemporaryDirectory(prefix="arc_d4_preview_") as temporary_directory:
-        working_directory = Path(temporary_directory)
-        source_path = working_directory / "submission_product.docx"
-        source_path.write_bytes(docx_content)
-        profile_directory = working_directory / "office_profile"
-        profile_directory.mkdir()
-        result = subprocess.run(
-            [
-                office,
-                "--headless",
-                f"-env:UserInstallation=file://{profile_directory}",
-                "--convert-to",
-                "pdf",
-                "--outdir",
-                str(working_directory),
-                str(source_path),
-            ],
-            capture_output=True,
-            text=True,
-            timeout=90,
-            check=False,
-        )
-        pdf_path = working_directory / "submission_product.pdf"
-        if result.returncode != 0 or not pdf_path.exists():
-            details = (result.stderr or result.stdout or "Unknown conversion error").strip()
-            raise RuntimeError(f"Could not render the document preview: {details[:300]}")
-        return pdf_path.read_bytes()
-
-
-@st.cache_data(show_spinner="Preparing the document pages for preview...")
-def render_submission_product_preview_images(docx_content):
-    """Render each page of the faithful PDF preview as a browser-safe PNG image."""
-    converter = shutil.which("pdftoppm")
-    if not converter:
-        raise RuntimeError("The page preview service is unavailable. Please refresh after deployment completes.")
-    pdf_content = render_submission_product_preview_pdf(docx_content)
-    with tempfile.TemporaryDirectory(prefix="arc_d4_preview_pages_") as temporary_directory:
-        working_directory = Path(temporary_directory)
-        pdf_path = working_directory / "submission_product.pdf"
-        output_prefix = working_directory / "page"
-        pdf_path.write_bytes(pdf_content)
-        result = subprocess.run(
-            [converter, "-png", "-r", "140", str(pdf_path), str(output_prefix)],
-            capture_output=True,
-            text=True,
-            timeout=90,
-            check=False,
-        )
-        page_paths = sorted(working_directory.glob("page-*.png"), key=lambda path: int(path.stem.rsplit("-", 1)[1]))
-        if result.returncode != 0 or not page_paths:
-            details = (result.stderr or result.stdout or "Unknown page-rendering error").strip()
-            raise RuntimeError(f"Could not prepare the document pages: {details[:300]}")
-        return tuple(path.read_bytes() for path in page_paths)
+def build_submission_product_preview_html(content, product_code, innovation_name):
+    """Create a readable in-app preview from the same populated DOCX offered for download."""
+    document = Document(BytesIO(content))
+    body = [
+        "<style>"
+        "*{box-sizing:border-box;}"
+        "body{font-family:Arial,sans-serif;color:#172033;background:#eef2f7;margin:0;padding:clamp(8px,2vw,22px);overflow-x:hidden;}"
+        ".sheet{background:#fff;width:100%;max-width:1180px;margin:auto;padding:clamp(18px,4vw,52px);box-shadow:0 1px 8px #bcc5d1;}"
+        "h1{font-size:clamp(19px,2.4vw,27px);margin:0 0 8px;color:#14213d;}"
+        ".meta{color:#556070;font-size:clamp(12px,1.5vw,14px);margin-bottom:24px;border-bottom:1px solid #d7dde6;padding-bottom:14px;}"
+        "p{font-size:clamp(13px,1.65vw,15px);line-height:1.55;margin:0 0 10px;white-space:pre-wrap;overflow-wrap:anywhere;}"
+        ".table-wrap{width:100%;overflow-x:auto;margin:16px 0 22px;}"
+        "table{width:100%;min-width:520px;border-collapse:collapse;font-size:clamp(11px,1.45vw,13px);margin:0;}"
+        "td{border:1px solid #cbd5e1;padding:clamp(5px,1vw,9px);vertical-align:top;line-height:1.4;overflow-wrap:anywhere;}"
+        "@media (max-width:600px){.sheet{padding:18px 14px;}.meta{margin-bottom:16px;}table{min-width:460px;}}"
+        "tr:first-child td{background:#e8f0f8;font-weight:700;}"
+        "</style><main class='sheet'>"
+        f"<h1>{escape(product_code)} document preview</h1>"
+        f"<div class='meta'>Innovation: {escape(str(innovation_name))}. This preview is generated from the same populated Word file available below.</div>"
+    ]
+    for paragraph in document.paragraphs:
+        value = paragraph.text.strip()
+        if value:
+            body.append(f"<p>{escape(value)}</p>")
+    for table in document.tables:
+        body.append("<div class='table-wrap'><table>")
+        for row in table.rows:
+            body.append("<tr>")
+            for cell in row.cells:
+                cell_text = "<br>".join(
+                    escape(paragraph.text.strip()) for paragraph in cell.paragraphs if paragraph.text.strip()
+                ) or "&nbsp;"
+                body.append(f"<td>{cell_text}</td>")
+            body.append("</tr>")
+        body.append("</table></div>")
+    body.append("</main>")
+    return "".join(body)
 
 
 def build_filled_submission_product_docx(matrix, profile, product_code):
