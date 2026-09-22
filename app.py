@@ -15,7 +15,6 @@ from types import ModuleType
 
 import pandas as pd
 import streamlit as st
-import streamlit.components.v1 as components
 from docx import Document
 from docxtpl import DocxTemplate
 from docx.enum.table import WD_CELL_VERTICAL_ALIGNMENT
@@ -831,11 +830,7 @@ def show_submission_ready_report(matrix, profile=None):
             try:
                 preview_docx = build_filled_submission_product_docx(matrix, profile or {}, selected_preview)
                 preview_pdf = render_submission_product_preview_pdf(preview_docx)
-                components.html(
-                    build_submission_product_preview_html(preview_pdf),
-                    height=900,
-                    scrolling=True,
-                )
+                st.pdf(preview_pdf, height="stretch", key=f"pdf_preview_{selected_preview}_{selected_innovation}")
             except Exception as exc:
                 st.error(f"{selected_preview} preview could not be prepared: {exc}")
 
@@ -1223,16 +1218,6 @@ def render_submission_product_preview_pdf(docx_content):
             details = (result.stderr or result.stdout or "Unknown conversion error").strip()
             raise RuntimeError(f"Could not render the document preview: {details[:300]}")
         return pdf_path.read_bytes()
-
-
-def build_submission_product_preview_html(pdf_content):
-    """Embed the rendered PDF at the available width for a faithful in-app document preview."""
-    pdf_data = base64.b64encode(pdf_content).decode("ascii")
-    return (
-        "<style>html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#eef2f7;}"
-        "embed{display:block;width:100%;height:100vh;border:0;}</style>"
-        f"<embed src='data:application/pdf;base64,{pdf_data}' type='application/pdf'>"
-    )
 
 
 def build_filled_submission_product_docx(matrix, profile, product_code):
