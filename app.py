@@ -805,12 +805,12 @@ def show_submission_ready_report(matrix, profile=None):
                         st.caption("Manual workshop tool; it does not affect programme-delivery readiness.")
                     try:
                         product_docx = build_filled_submission_product_docx(matrix, profile or {}, product_code)
-                        with st.expander(f"Preview {product_code}", expanded=False):
-                            components.html(
-                                build_submission_product_preview_html(product_docx, product_code, selected_innovation),
-                                height=720,
-                                scrolling=True,
-                            )
+                        if st.button(
+                            f"Preview {product_code}",
+                            key=f"preview_submission_{product_code}_{selected_innovation}",
+                            use_container_width=True,
+                        ):
+                            st.session_state.submission_preview_product = product_code
                         st.download_button(
                             f"Download {product_code}",
                             data=product_docx,
@@ -821,6 +821,21 @@ def show_submission_ready_report(matrix, profile=None):
                         )
                     except Exception as exc:
                         st.error(f"{product_code} template could not be prepared: {exc}")
+
+        selected_preview = st.session_state.get("submission_preview_product")
+        if selected_preview in SUBMISSION_PRODUCT_TEMPLATES:
+            preview_name, _ = SUBMISSION_PRODUCT_TEMPLATES[selected_preview]
+            st.markdown("### Full-width document preview")
+            st.caption(f"{selected_preview} — {preview_name}. Select another Preview button above to change the document.")
+            try:
+                preview_docx = build_filled_submission_product_docx(matrix, profile or {}, selected_preview)
+                components.html(
+                    build_submission_product_preview_html(preview_docx, selected_preview, selected_innovation),
+                    height=900,
+                    scrolling=True,
+                )
+            except Exception as exc:
+                st.error(f"{selected_preview} preview could not be prepared: {exc}")
 
     st.markdown("### 4. D3 final readiness line")
     st.write(
