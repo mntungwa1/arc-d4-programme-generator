@@ -779,6 +779,19 @@ def show_submission_ready_report(matrix, profile=None):
     c3.metric("Submission products ready", f"{ready_count} of {len(board)}")
     c4.metric("Average IPI", f"{scores.mean():.2f} / 10" if scores.notna().any() else "—")
 
+    selected_record = selected_innovation_record(matrix, profile or {})
+    selected_name = profile_value(profile or {}, "innovation_name", "name")
+    with st.container(border=True):
+        st.markdown(f"**Current innovation: {selected_name}**")
+        if selected_record:
+            st.write(
+                f"Portfolio #{clean(selected_record.get('#'))} · "
+                f"IPI {clean(selected_record.get('IPI v2.0 (computed)'))} · "
+                f"Evidence confidence: {clean(selected_record.get('Confidence'))}"
+            )
+        else:
+            st.caption("This innovation has no matching row in the governed matrix yet.")
+
     st.markdown("### 1. Executive results statement")
     st.write(
         f"The D2/D3 evidence record has been consolidated into a scored portfolio of {len(portfolio)} innovations. "
@@ -808,6 +821,7 @@ def show_submission_ready_report(matrix, profile=None):
     )
     st.markdown("### Submission documents")
     selected_innovation = profile_value(profile or {}, "innovation_name", "name")
+    st.info(f"Working on: **{selected_innovation}**. P2, P3, P6 and P9 use this innovation; the other products cover the regional programme.")
     programme_tab, other_tab = st.tabs(
         ["P1a and P1b — Programme documents", "Other products — P2 to P9"],
         key="submission_product_tab",
@@ -815,13 +829,13 @@ def show_submission_ready_report(matrix, profile=None):
     )
     if programme_tab.open:
         with programme_tab:
-            st.caption("The regional programme document and its summary brief are ready to preview or download.")
+            st.caption("These two documents cover the regional programme as a whole and stay the same when the selected innovation changes.")
             show_submission_product_buttons(matrix, profile or {}, ["P1a", "P1b"], selected_innovation)
             st.caption("P1a and P1b share the P1 readiness decision in the controlled matrix.")
     if other_tab.open:
         with other_tab:
             if selected_innovation:
-                st.caption(f"Innovation-specific products for {selected_innovation}. Select another innovation in the sidebar to change the record.")
+                st.caption(f"Selected innovation: {selected_innovation}. P2, P3, P6 and P9 update with this record. P4, P5, P7 and P8 are programme-wide documents.")
                 show_submission_product_buttons(
                     matrix, profile or {},
                     [code for code in SUBMISSION_PRODUCT_TEMPLATES if code not in REGIONAL_PRODUCTS],
@@ -879,6 +893,8 @@ def show_submission_product_buttons(matrix, profile, product_codes, selected_inn
                     st.markdown(f"**{product_code} — {product_name}**")
                     if product_code == "P4":
                         st.caption("Manual workshop tool; it does not affect programme-delivery readiness.")
+                    elif product_code in {"P5", "P7", "P8"}:
+                        st.caption("Programme-wide product; its contents do not change with the sidebar selection.")
                     try:
                         product_docx = build_filled_submission_product_docx(matrix, profile, product_code)
                         if st.button(
@@ -1732,11 +1748,24 @@ if signed_in:
         shared = client().table("d4_innovations").select("innovation_name,innovation_url,innovation_type,d3_profile").order("innovation_name").execute().data or []
     except Exception as exc:
         st.sidebar.warning(f"Shared portfolio unavailable: {exc}")
-names = portfolio["Innovation"].tolist() + [entry["innovation_name"] for entry in shared]
-selected_name = st.sidebar.selectbox("Innovation to work on", names, key="innovation_selector")
+names = list(dict.fromkeys(portfolio["Innovation"].tolist() + [entry["innovation_name"] for entry in shared]))
+def on_innovation_change():
+    # A preview and proposal entered for the previous record must not remain active.
+    st.session_state.pop("submission_preview_product", None)
+    for key in ("proposal_title", "proposal_funder", "proposal_funder_type",
+                "proposal_instrument", "proposal_amount", "proposal_scope",
+                "proposal_duration", "proposal_alignment", "proposal_problem",
+                "proposal_results"):
+        st.session_state.pop(key, None)
+
+selected_name = st.sidebar.selectbox(
+    "Innovation to work on", names, key="innovation_selector",
+    on_change=on_innovation_change,
+)
 saved = next((entry for entry in shared if entry["innovation_name"] == selected_name), {})
 profile = dict(saved.get("d3_profile") or {})
-profile.setdefault("innovation_name", selected_name)
+# The selector is authoritative even if a stored profile has a stale name.
+profile["innovation_name"] = selected_name
 profile.setdefault("innovation_url", saved.get("innovation_url", ""))
 profile.setdefault("innovation_type", saved.get("innovation_type", ""))
 selected_portfolio = portfolio.loc[portfolio["Innovation"].astype(str) == selected_name]
@@ -1750,6 +1779,7 @@ if not selected_portfolio.empty:
 
 st.title("ARC D4 Delivery Platform")
 st.caption("A controlled programme record that routes a portfolio innovation through admission, appraisal, verification, generation and product readiness.")
+st.markdown(f"**Selected innovation:** {selected_name}")
 
 
 def render_workspace(workspace):
