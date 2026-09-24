@@ -1750,150 +1750,180 @@ if not selected_portfolio.empty:
 
 st.title("ARC D4 Delivery Platform")
 st.caption("A controlled programme record that routes a portfolio innovation through admission, appraisal, verification, generation and product readiness.")
-workspace = st.radio("Workspace", ["Programme command", "Workstream C — portfolio admission", "Workstream D — innovation delivery", "Research and verification", "Products and readiness", "Submission-ready report", "Funding proposal"], horizontal=True)
-if workspace == "Submission-ready report":
-    with st.expander("Current stage and open actions", expanded=False):
+
+
+def render_workspace(workspace):
+    if workspace == "Submission-ready report":
+        with st.expander("Current stage and open actions", expanded=False):
+            show_stage_callout(matrix, st.session_state.selected_stage)
+            show_correction_callout(matrix, profile, "Selected innovation: open actions")
+    else:
         show_stage_callout(matrix, st.session_state.selected_stage)
         show_correction_callout(matrix, profile, "Selected innovation: open actions")
-else:
-    show_stage_callout(matrix, st.session_state.selected_stage)
-    show_correction_callout(matrix, profile, "Selected innovation: open actions")
 
-if workspace == "Programme command":
-    stages = table(matrix, "01_Stages")
-    products = readiness_board(matrix)
-    pending = portfolio[portfolio["IPI v2.0 (computed)"].astype(str).str.upper().eq("PENDING")].shape[0]
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Portfolio records", len(portfolio))
-    c2.metric("IPI determinations pending", pending)
-    c3.metric("Ready for submission", int(products.get("Submission", pd.Series(dtype=str)).astype(str).str.strip().str.lower().eq("ready").sum()))
-    c4.metric("Current selection", selected_name[:22] + ("…" if len(selected_name) > 22 else ""))
-    st.subheader("Programme pathway")
-    stream, current = st.columns([3, 1], gap="large")
-    with stream:
-        for lane, group in stages.groupby("Lane", sort=False):
-            with st.expander(clean(lane), expanded=True):
-                for _, stage in group.iterrows():
-                    left, text = st.columns([1, 5])
-                    if left.button(clean(stage["Stage ID"]), key=f"command_{stage['Stage ID']}"):
-                        st.session_state.selected_stage = clean(stage["Stage ID"])
-                    text.markdown(f"**{clean(stage['Stage name'])}**")
-                    text.caption(f"Exit: {clean(stage['Exit condition'])}")
-    with current:
-        selected_stage_panel(matrix, st.session_state.selected_stage, profile)
-    st.subheader("Product readiness")
-    show_product_readiness_callout(matrix)
-
-elif workspace == "Workstream C — portfolio admission":
-    st.subheader("Workstream C — portfolio admission")
-    st.write("S1 records the governed portfolio. S2 settles the shortlist. New innovations are admitted only after their record is complete enough to be owned and reviewed.")
-    tabs = st.tabs(["S1 Portfolio", "S2 Top 10+", "New innovation"])
-    with tabs[0]:
-        view = portfolio.copy()
-        view["Record status"] = view["IPI v2.0 (computed)"].apply(lambda value: "Pending" if clean(value).upper() == "PENDING" else "Scored")
-        st.dataframe(view[["#", "Innovation", "IPI v2.0 (computed)", "Record status", "Confidence"]], hide_index=True, use_container_width=True, height=520)
-        pending_count = int((view["Record status"] == "Pending").sum())
-        if pending_count:
-            st.warning(f"S1 attention: {pending_count} portfolio record(s) still require their contracted IPI determinations. Complete SAS, GRS, CVS and SIS evidence before treating the portfolio as ranked.")
-    with tabs[1]:
-        ranking = portfolio.copy()
-        numeric = pd.to_numeric(ranking["IPI v2.0 (computed)"], errors="coerce")
-        ranking["Ranking status"] = numeric.map(lambda value: "Scored" if pd.notna(value) else "Pending")
-        st.caption("The platform does not fabricate a Top 10 where the contracted index is still pending. Scored records rank first; the remaining records are visibly pending.")
-        st.dataframe(ranking.assign(_score=numeric).sort_values(["_score", "#"], ascending=[False, True]).head(10)[["#", "Innovation", "IPI v2.0 (computed)", "Ranking status", "Confidence"]], hide_index=True, use_container_width=True)
-        if ranking["Ranking status"].eq("Pending").any():
-            st.warning("S2 attention: the shortlist cannot be formally published until the pending index determinations are resolved by the SADC Secretariat determination session.")
-    with tabs[2]:
-        if not signed_in:
-            st.warning("Sign in before admitting a shared innovation.")
-        profile_form(matrix, st.session_state.new_profile, "new", signed_in)
-
-elif workspace == "Workstream D — innovation delivery":
-    stages = table(matrix, "01_Stages")
-    permitted = stages[stages["Stage ID"].isin([f"S{i}" for i in range(3, 9)] + ["S8a"])]
-    st.subheader("Workstream D — innovation delivery")
-    st.caption("The selected record advances through gap analysis, profile development, appraisal, feasibility, regional posture and financing route selection.")
-    sequence, selected = st.columns([3, 1], gap="large")
-    with sequence:
-        for _, stage in permitted.iterrows():
-            left, text = st.columns([1, 5])
-            if left.button(clean(stage["Stage ID"]), key=f"d_{stage['Stage ID']}"):
-                st.session_state.selected_stage = clean(stage["Stage ID"])
-            text.markdown(f"**{clean(stage['Stage ID'])} — {clean(stage['Stage name'])}**")
-            text.caption(clean(stage["Exit condition"]))
-    with selected:
-        selected_stage_panel(matrix, st.session_state.selected_stage, profile)
-    st.divider()
-    st.subheader("Readiness work list")
-    problems = readiness(matrix, profile)
-    if problems:
-        st.warning("This record is not ready to generate a product.")
-        st.dataframe(pd.DataFrame({"Open work item": problems, "Resolver": ["R4 — owner escalation"] * len(problems)}), hide_index=True, use_container_width=True)
-    else:
-        st.success("The visible innovation profile passes the current pre-generation checks.")
-    show_correction_callout(matrix, profile, "Actions to make this innovation ready")
-    st.divider()
-    st.subheader("Annex R.1 cost analysis")
-    cost_analysis_form(profile, f"existing_cost_{clean(selected_name)}")
-    if cost_analysis_complete(profile):
-        st.success("Cost analysis complete. The band can support D3 planning and prioritisation; replace it with national pricing for a financing proposition.")
-    else:
-        st.info("Complete the cost-analysis fields before using this innovation in an investment-ready proposition.")
-    if signed_in and st.button("Save cost analysis to shared register", key=f"save_cost_{clean(selected_name)}"):
-        if not cost_analysis_complete(profile):
-            st.error("Complete the cost analysis before saving it to the shared register.")
-        else:
-            try:
-                save_cost_analysis(profile)
-                st.success("Cost analysis saved to the shared register.")
-            except Exception as exc:
-                st.error(f"Could not save the cost analysis: {exc}")
-
-elif workspace == "Research and verification":
-    st.subheader("Research broker and verification gate")
-    st.caption("Only a request packet leaves the platform. Returned claims are not written into the programme record until a named analyst accepts them at S13.")
-    left, right = st.columns([3, 1], gap="large")
-    with left:
+    if workspace == "Programme command":
         stages = table(matrix, "01_Stages")
-        for _, stage in stages[stages["Stage ID"].isin([f"S{i}" for i in range(9, 14)])].iterrows():
-            button, text = st.columns([1, 5])
-            if button.button(clean(stage["Stage ID"]), key=f"research_{stage['Stage ID']}"):
-                st.session_state.selected_stage = clean(stage["Stage ID"])
-            text.markdown(f"**{clean(stage['Stage name'])}**")
-            text.caption(clean(stage["Exit condition"]))
-        st.subheader("Permitted research tasks")
-        st.dataframe(table(matrix, "10_Research_Broker"), hide_index=True, use_container_width=True, height=400)
-    with right:
-        selected_stage_panel(matrix, st.session_state.selected_stage, profile)
-    st.subheader("Evidence ledger")
-    ledger = table(matrix, "14_Audit_Log")
-    st.dataframe(ledger, hide_index=True, use_container_width=True)
-    st.warning("Verification attention: a research return is only usable after the source is opened, checked against the permitted source and date rules, and accepted by a named analyst at S13. Unverified claims must remain outside the programme record.")
-
-elif workspace == "Products and readiness":
-    st.subheader("Products and readiness")
-    st.caption("No product leaves the platform with an unexplained absence. A missing field becomes a work item, or a named, time-limited waiver; it is never silently drafted around.")
-    products = readiness_board(matrix)
-    product, detail = st.columns([3, 1], gap="large")
-    with product:
+        products = readiness_board(matrix)
+        pending = portfolio[portfolio["IPI v2.0 (computed)"].astype(str).str.upper().eq("PENDING")].shape[0]
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Portfolio records", len(portfolio))
+        c2.metric("IPI determinations pending", pending)
+        c3.metric("Ready for submission", int(products.get("Submission", pd.Series(dtype=str)).astype(str).str.strip().str.lower().eq("ready").sum()))
+        c4.metric("Current selection", selected_name[:22] + ("…" if len(selected_name) > 22 else ""))
+        st.subheader("Programme pathway")
+        stream, current = st.columns([3, 1], gap="large")
+        with stream:
+            for lane, group in stages.groupby("Lane", sort=False):
+                with st.expander(clean(lane), expanded=True):
+                    for _, stage in group.iterrows():
+                        left, text = st.columns([1, 5])
+                        if left.button(clean(stage["Stage ID"]), key=f"command_{stage['Stage ID']}"):
+                            st.session_state.selected_stage = clean(stage["Stage ID"])
+                        text.markdown(f"**{clean(stage['Stage name'])}**")
+                        text.caption(f"Exit: {clean(stage['Exit condition'])}")
+        with current:
+            selected_stage_panel(matrix, st.session_state.selected_stage, profile)
+        st.subheader("Product readiness")
         show_product_readiness_callout(matrix)
-        st.subheader("Product sets")
-        st.dataframe(table(matrix, "11_Output_Products"), hide_index=True, use_container_width=True)
-        st.subheader("Pre-generation gate for selected innovation")
-        failures = readiness(matrix, profile)
-        if failures:
-            for failure in failures:
-                st.error(failure)
-        else:
-            st.success("The selected working record can proceed to product generation once its relevant product readiness conditions are met.")
-        show_correction_callout(matrix, profile, "Actions before generation")
-    with detail:
-        selected_stage_panel(matrix, st.session_state.selected_stage, profile)
-        st.divider()
-        st.markdown("**Resolver sequence**")
-        st.dataframe(table(matrix, "28_Resolution_Layer")[["ID", "Resolver", "Mode"]], hide_index=True, use_container_width=True)
 
-elif workspace == "Submission-ready report":
-    show_submission_ready_report(matrix, profile)
-else:
-    show_funding_proposal_workspace(matrix, profile)
+    elif workspace == "Workstream C — portfolio admission":
+        st.subheader("Workstream C — portfolio admission")
+        st.write("S1 records the governed portfolio. S2 settles the shortlist. New innovations are admitted only after their record is complete enough to be owned and reviewed.")
+        tabs = st.tabs(["S1 Portfolio", "S2 Top 10+", "New innovation"])
+        with tabs[0]:
+            view = portfolio.copy()
+            view["Record status"] = view["IPI v2.0 (computed)"].apply(lambda value: "Pending" if clean(value).upper() == "PENDING" else "Scored")
+            st.dataframe(view[["#", "Innovation", "IPI v2.0 (computed)", "Record status", "Confidence"]], hide_index=True, use_container_width=True, height=520)
+            pending_count = int((view["Record status"] == "Pending").sum())
+            if pending_count:
+                st.warning(f"S1 attention: {pending_count} portfolio record(s) still require their contracted IPI determinations. Complete SAS, GRS, CVS and SIS evidence before treating the portfolio as ranked.")
+        with tabs[1]:
+            ranking = portfolio.copy()
+            numeric = pd.to_numeric(ranking["IPI v2.0 (computed)"], errors="coerce")
+            ranking["Ranking status"] = numeric.map(lambda value: "Scored" if pd.notna(value) else "Pending")
+            st.caption("The platform does not fabricate a Top 10 where the contracted index is still pending. Scored records rank first; the remaining records are visibly pending.")
+            st.dataframe(ranking.assign(_score=numeric).sort_values(["_score", "#"], ascending=[False, True]).head(10)[["#", "Innovation", "IPI v2.0 (computed)", "Ranking status", "Confidence"]], hide_index=True, use_container_width=True)
+            if ranking["Ranking status"].eq("Pending").any():
+                st.warning("S2 attention: the shortlist cannot be formally published until the pending index determinations are resolved by the SADC Secretariat determination session.")
+        with tabs[2]:
+            if not signed_in:
+                st.warning("Sign in before admitting a shared innovation.")
+            profile_form(matrix, st.session_state.new_profile, "new", signed_in)
+
+    elif workspace == "Workstream D — innovation delivery":
+        stages = table(matrix, "01_Stages")
+        permitted = stages[stages["Stage ID"].isin([f"S{i}" for i in range(3, 9)] + ["S8a"])]
+        st.subheader("Workstream D — innovation delivery")
+        st.caption("The selected record advances through gap analysis, profile development, appraisal, feasibility, regional posture and financing route selection.")
+        sequence, selected = st.columns([3, 1], gap="large")
+        with sequence:
+            for _, stage in permitted.iterrows():
+                left, text = st.columns([1, 5])
+                if left.button(clean(stage["Stage ID"]), key=f"d_{stage['Stage ID']}"):
+                    st.session_state.selected_stage = clean(stage["Stage ID"])
+                text.markdown(f"**{clean(stage['Stage ID'])} — {clean(stage['Stage name'])}**")
+                text.caption(clean(stage["Exit condition"]))
+        with selected:
+            selected_stage_panel(matrix, st.session_state.selected_stage, profile)
+        st.divider()
+        st.subheader("Readiness work list")
+        problems = readiness(matrix, profile)
+        if problems:
+            st.warning("This record is not ready to generate a product.")
+            st.dataframe(pd.DataFrame({"Open work item": problems, "Resolver": ["R4 — owner escalation"] * len(problems)}), hide_index=True, use_container_width=True)
+        else:
+            st.success("The visible innovation profile passes the current pre-generation checks.")
+        show_correction_callout(matrix, profile, "Actions to make this innovation ready")
+        st.divider()
+        st.subheader("Annex R.1 cost analysis")
+        cost_analysis_form(profile, f"existing_cost_{clean(selected_name)}")
+        if cost_analysis_complete(profile):
+            st.success("Cost analysis complete. The band can support D3 planning and prioritisation; replace it with national pricing for a financing proposition.")
+        else:
+            st.info("Complete the cost-analysis fields before using this innovation in an investment-ready proposition.")
+        if signed_in and st.button("Save cost analysis to shared register", key=f"save_cost_{clean(selected_name)}"):
+            if not cost_analysis_complete(profile):
+                st.error("Complete the cost analysis before saving it to the shared register.")
+            else:
+                try:
+                    save_cost_analysis(profile)
+                    st.success("Cost analysis saved to the shared register.")
+                except Exception as exc:
+                    st.error(f"Could not save the cost analysis: {exc}")
+
+    elif workspace == "Research and verification":
+        st.subheader("Research broker and verification gate")
+        st.caption("Only a request packet leaves the platform. Returned claims are not written into the programme record until a named analyst accepts them at S13.")
+        left, right = st.columns([3, 1], gap="large")
+        with left:
+            stages = table(matrix, "01_Stages")
+            for _, stage in stages[stages["Stage ID"].isin([f"S{i}" for i in range(9, 14)])].iterrows():
+                button, text = st.columns([1, 5])
+                if button.button(clean(stage["Stage ID"]), key=f"research_{stage['Stage ID']}"):
+                    st.session_state.selected_stage = clean(stage["Stage ID"])
+                text.markdown(f"**{clean(stage['Stage name'])}**")
+                text.caption(clean(stage["Exit condition"]))
+            st.subheader("Permitted research tasks")
+            st.dataframe(table(matrix, "10_Research_Broker"), hide_index=True, use_container_width=True, height=400)
+        with right:
+            selected_stage_panel(matrix, st.session_state.selected_stage, profile)
+        st.subheader("Evidence ledger")
+        ledger = table(matrix, "14_Audit_Log")
+        st.dataframe(ledger, hide_index=True, use_container_width=True)
+        st.warning("Verification attention: a research return is only usable after the source is opened, checked against the permitted source and date rules, and accepted by a named analyst at S13. Unverified claims must remain outside the programme record.")
+
+    elif workspace == "Product readiness":
+        st.subheader("Product readiness")
+        st.caption("No product leaves the platform with an unexplained absence. A missing field becomes a work item, or a named, time-limited waiver; it is never silently drafted around.")
+        products = readiness_board(matrix)
+        product, detail = st.columns([3, 1], gap="large")
+        with product:
+            show_product_readiness_callout(matrix)
+            st.subheader("Product sets")
+            st.dataframe(table(matrix, "11_Output_Products"), hide_index=True, use_container_width=True)
+            st.subheader("Pre-generation gate for selected innovation")
+            failures = readiness(matrix, profile)
+            if failures:
+                for failure in failures:
+                    st.error(failure)
+            else:
+                st.success("The selected working record can proceed to product generation once its relevant product readiness conditions are met.")
+            show_correction_callout(matrix, profile, "Actions before generation")
+        with detail:
+            selected_stage_panel(matrix, st.session_state.selected_stage, profile)
+            st.divider()
+            st.markdown("**Resolver sequence**")
+            st.dataframe(table(matrix, "28_Resolution_Layer")[["ID", "Resolver", "Mode"]], hide_index=True, use_container_width=True)
+
+    elif workspace == "Submission-ready report":
+        show_submission_ready_report(matrix, profile)
+    else:
+        show_funding_proposal_workspace(matrix, profile)
+
+submission_group, programme_group = st.tabs(
+    ["Submission and products", "Programme work"],
+    key="workspace_group_tab",
+    on_change="rerun",
+)
+submission_labels = ["Submission-ready report", "Product readiness", "Funding proposal"]
+programme_labels = [
+    "Programme command",
+    "Workstream C — portfolio admission",
+    "Workstream D — innovation delivery",
+    "Research and verification",
+]
+with submission_group:
+    submission_tabs = st.tabs(submission_labels, key="submission_workspace_tab", on_change="rerun")
+with programme_group:
+    programme_tabs = st.tabs(programme_labels, key="programme_workspace_tab", on_change="rerun")
+
+if submission_group.open:
+    for label, tab in zip(submission_labels, submission_tabs):
+        if tab.open:
+            with tab:
+                render_workspace(label)
+if programme_group.open:
+    for label, tab in zip(programme_labels, programme_tabs):
+        if tab.open:
+            with tab:
+                render_workspace(label)
