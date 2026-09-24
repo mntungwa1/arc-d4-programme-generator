@@ -36,7 +36,8 @@ SADC_PROPOSAL_TEMPLATE_PARTS = [
     for number in range(1, 7)
 ]
 SUBMISSION_PRODUCT_TEMPLATES = {
-    "P1": ("Regional Programme Document", "T1_Regional_Programme_Document.docx"),
+    "P1a": ("Final Programme Document", "SADC_DRM_Innovation_Final_Programme_Document_4.docx"),
+    "P1b": ("Programme Summary Brief", "SADC_DRM_Innovation_Summary_Brief_3.docx"),
     "P2": ("Project Concept Note", "T2_Project_Concept_Note.docx"),
     "P3": ("Implementation Plan", "T3_Implementation_Plan.docx"),
     "P4": ("Validation Workshop Pack", "T4_Validation_Workshop_Pack.docx"),
@@ -48,6 +49,11 @@ SUBMISSION_PRODUCT_TEMPLATES = {
 }
 SUBMISSION_PRODUCT_TEMPLATE_ARCHIVE = Path(__file__).parent / "Submission_Product_Templates.zip.b64"
 TEMPLATE_POPULATION_KIT = Path(__file__).parent / "SADC_Template_Population_Kit.zip.b64"
+REGIONAL_PRODUCTS = {"P1a", "P1b"}
+SADC_HEADER_IMAGE = Path(__file__).parent / "SADC_Head_New.png"
+SADC_FOOTER_IMAGE = Path(__file__).parent / "SADC_Foot_New.png"
+SADC_HEADER_ASPECT = 290 / 2048
+SADC_FOOTER_ASPECT = 185 / 2048
 SADC_BLUE = "003E78"
 COMPLETION_BLUE = "0070C0"
 
@@ -625,6 +631,24 @@ def readiness_board(matrix):
     return board
 
 
+def display_split_programme_product(board):
+    """Show the two P1 documents while retaining the matrix's P1 readiness gate."""
+    if board.empty or "Product" not in board.columns:
+        return board
+    rows = []
+    for _, product in board.iterrows():
+        if clean(product.get("Product")) == "P1":
+            for code in ("P1a", "P1b"):
+                item = product.copy()
+                item["Product"] = code
+                item["Name"] = SUBMISSION_PRODUCT_TEMPLATES[code][0]
+                item["Template"] = SUBMISSION_PRODUCT_TEMPLATES[code][1]
+                rows.append(item)
+        else:
+            rows.append(product)
+    return pd.DataFrame(rows, columns=board.columns)
+
+
 def show_product_readiness_callout(matrix):
     """Show v3.3 tier-aware readiness, driven by distinct outstanding facts."""
     board = readiness_board(matrix)
@@ -646,7 +670,7 @@ def show_product_readiness_callout(matrix):
     display_columns = [column for column in [
         "Product", "Name", "Working draft", "Fact 1", "Fact 2", "VALIDATION-READY", "Submission", "Who we are waiting on"
     ] if column in board.columns]
-    st.dataframe(board[display_columns], hide_index=True, use_container_width=True)
+    st.dataframe(display_split_programme_product(board)[display_columns], hide_index=True, use_container_width=True)
     for _, product in board.iterrows():
         product_id = clean(product.get("Product"))
         d2 = D2_PRODUCT_READINESS.get(product_id, {})
@@ -661,7 +685,8 @@ def show_product_readiness_callout(matrix):
         ]
         waiting_on = clean(product.get("Who we are waiting on"))
         with st.container(border=True):
-            st.markdown(f"### {product_id} — {product_name}")
+            heading = "P1a / P1b — Final Programme Document and Programme Summary Brief" if product_id == "P1" else f"{product_id} — {product_name}"
+            st.markdown(f"### {heading}")
             left, right = st.columns(2)
             left.success(f"Working draft: {working_draft or 'Ready to produce'}")
             if submission.lower() == "ready":
@@ -782,57 +807,61 @@ def show_submission_ready_report(matrix, profile=None):
         "implementation products. The readiness board confirms that each product has reached the completed delivery state."
     )
     board_display = [column for column in ["Product", "Name", "Template", "Working draft", "VALIDATION-READY", "Submission"] if column in board.columns]
-    st.dataframe(board[board_display], hide_index=True, use_container_width=True)
+    st.dataframe(display_split_programme_product(board)[board_display], hide_index=True, use_container_width=True)
+    st.caption("P1a and P1b share the P1 readiness decision in the controlled matrix.")
     if not products.empty:
         st.caption("Governed product definitions")
         st.dataframe(products, hide_index=True, use_container_width=True, height=260)
 
-    st.markdown("### Innovation-specific ready products")
+    st.markdown("### Programme documents and innovation-specific products")
     selected_innovation = profile_value(profile or {}, "innovation_name", "name")
     if not selected_innovation:
-        st.info("Select an innovation in the left-hand innovation register to prepare its P1-P9 submission products.")
+        st.info("Select an innovation in the left-hand innovation register to prepare the innovation-specific P2-P9 products. P1a and P1b are regional documents and are available below.")
     else:
         st.write(
-            f"Each button below creates the supplied report template populated with the controlled record for **{selected_innovation}**. "
-            "Each report is populated from the available D2/D3 and costing records. Where a required national or Member State decision sits outside the Programme's authority, the report names the responsible holder and action instead of leaving a placeholder.")
-        for start in range(0, len(SUBMISSION_PRODUCT_TEMPLATES), 3):
-            columns = st.columns(3)
-            for column, product_code in zip(columns, list(SUBMISSION_PRODUCT_TEMPLATES)[start:start + 3]):
-                product_name, _ = SUBMISSION_PRODUCT_TEMPLATES[product_code]
-                with column:
-                    st.markdown(f"**{product_code} — {product_name}**")
-                    if product_code == "P4":
-                        st.caption("Manual workshop tool; it does not affect programme-delivery readiness.")
-                    try:
-                        product_docx = build_filled_submission_product_docx(matrix, profile or {}, product_code)
-                        if st.button(
-                            f"Preview {product_code}",
-                            key=f"preview_submission_{product_code}_{selected_innovation}",
-                            use_container_width=True,
-                        ):
-                            st.session_state.submission_preview_product = product_code
-                        st.download_button(
-                            f"Download {product_code}",
-                            data=product_docx,
-                            file_name=product_filename(product_code, selected_innovation),
-                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                            key=f"download_submission_{product_code}_{selected_innovation}",
-                            use_container_width=True,
-                        )
-                    except Exception as exc:
-                        st.error(f"{product_code} template could not be prepared: {exc}")
+            f"P2-P9 are populated with the controlled record for **{selected_innovation}**. "
+            "Each innovation-specific report is populated from the available D2/D3 and costing records. Where a required national or Member State decision sits outside the Programme's authority, the report names the responsible holder and action instead of leaving a placeholder.")
+    available_products = [code for code in SUBMISSION_PRODUCT_TEMPLATES if code in REGIONAL_PRODUCTS or selected_innovation]
+    for start in range(0, len(available_products), 3):
+        columns = st.columns(3)
+        for column, product_code in zip(columns, available_products[start:start + 3]):
+            product_name, _ = SUBMISSION_PRODUCT_TEMPLATES[product_code]
+            with column:
+                st.markdown(f"**{product_code} — {product_name}**")
+                if product_code in REGIONAL_PRODUCTS:
+                    st.caption("SADC regional programme document")
+                if product_code == "P4":
+                    st.caption("Manual workshop tool; it does not affect programme-delivery readiness.")
+                try:
+                    product_docx = build_filled_submission_product_docx(matrix, profile or {}, product_code)
+                    if st.button(
+                        f"Preview {product_code}",
+                        key=f"preview_submission_{product_code}_{selected_innovation}",
+                        use_container_width=True,
+                    ):
+                        st.session_state.submission_preview_product = product_code
+                    st.download_button(
+                        f"Download {product_code}",
+                        data=product_docx,
+                        file_name=product_filename(product_code, selected_innovation),
+                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        key=f"download_submission_{product_code}_{selected_innovation}",
+                        use_container_width=True,
+                    )
+                except Exception as exc:
+                    st.error(f"{product_code} template could not be prepared: {exc}")
 
-        selected_preview = st.session_state.get("submission_preview_product")
-        if selected_preview in SUBMISSION_PRODUCT_TEMPLATES:
-            preview_name, _ = SUBMISSION_PRODUCT_TEMPLATES[selected_preview]
-            st.markdown("### Full-width document preview")
-            st.caption(f"{selected_preview} — {preview_name}. Select another Preview button above to change the document.")
-            try:
-                preview_docx = build_filled_submission_product_docx(matrix, profile or {}, selected_preview)
-                preview_pdf = render_submission_product_preview_pdf(preview_docx)
-                st.pdf(preview_pdf, height="stretch", key=f"pdf_preview_{selected_preview}_{selected_innovation}")
-            except Exception as exc:
-                st.error(f"{selected_preview} preview could not be prepared: {exc}")
+    selected_preview = st.session_state.get("submission_preview_product")
+    if selected_preview in SUBMISSION_PRODUCT_TEMPLATES and (selected_preview in REGIONAL_PRODUCTS or selected_innovation):
+        preview_name, _ = SUBMISSION_PRODUCT_TEMPLATES[selected_preview]
+        st.markdown("### Full-width document preview")
+        st.caption(f"{selected_preview} — {preview_name}. Select another Preview button above to change the document.")
+        try:
+            preview_docx = build_filled_submission_product_docx(matrix, profile or {}, selected_preview)
+            preview_pdf = render_submission_product_preview_pdf(preview_docx)
+            st.pdf(preview_pdf, height="stretch", key=f"pdf_preview_{selected_preview}_{selected_innovation}")
+        except Exception as exc:
+            st.error(f"{selected_preview} preview could not be prepared: {exc}")
 
     st.markdown("### 4. D3 final readiness line")
     st.write(
@@ -1096,12 +1125,47 @@ def replace_template_values(document, replacements):
 
 
 def product_filename(product_code, innovation):
+    if product_code in REGIONAL_PRODUCTS:
+        return f"ARC_D4_{product_code}_{SUBMISSION_PRODUCT_TEMPLATES[product_code][1]}"
     safe = re.sub(r"[^A-Za-z0-9]+", "_", innovation).strip("_") or "innovation"
     return f"ARC_D4_{product_code}_{safe}.docx"
 
 
+def apply_sadc_letterhead(document):
+    """Use the supplied Secretariat bands on every page of every product."""
+    for asset in (SADC_HEADER_IMAGE, SADC_FOOTER_IMAGE):
+        if not asset.is_file():
+            raise FileNotFoundError(f"SADC branding image is missing: {asset.name}")
+    document.settings.odd_and_even_pages_header_footer = False
+    for section in document.sections:
+        section.header.is_linked_to_previous = False
+        section.footer.is_linked_to_previous = False
+        section.different_first_page_header_footer = False
+        width = section.page_width - section.left_margin - section.right_margin
+        available_width_inches = width / Inches(1)
+        header_clearance = Inches(section.header_distance.inches + available_width_inches * SADC_HEADER_ASPECT + 0.12)
+        footer_clearance = Inches(section.footer_distance.inches + available_width_inches * SADC_FOOTER_ASPECT + 0.12)
+        section.top_margin = max(section.top_margin, header_clearance)
+        section.bottom_margin = max(section.bottom_margin, footer_clearance)
+        for part, asset in ((section.header, SADC_HEADER_IMAGE), (section.footer, SADC_FOOTER_IMAGE)):
+            for child in list(part._element):
+                part._element.remove(child)
+            paragraph = part.add_paragraph()
+            paragraph.paragraph_format.space_after = Pt(0)
+            paragraph.paragraph_format.space_before = Pt(0)
+            paragraph.add_run().add_picture(str(asset), width=width)
+
+
+def brand_submission_product(content):
+    document = Document(BytesIO(content))
+    apply_sadc_letterhead(document)
+    output = BytesIO()
+    document.save(output)
+    return output.getvalue()
+
+
 def build_submission_product_docx(matrix, profile, product_code):
-    """Compile one supplied P1-P9 template for the currently selected innovation."""
+    """Compile a supplied product template for the currently selected innovation."""
     product_name, _ = SUBMISSION_PRODUCT_TEMPLATES[product_code]
     document = product_template_document(product_code)
     prune_product_template_guidance(document)
@@ -1140,6 +1204,7 @@ def build_submission_product_docx(matrix, profile, product_code):
     }
     replace_template_values(document, replacements)
     colour_template_fields(document)
+    apply_sadc_letterhead(document)
     buffer = BytesIO()
     document.save(buffer)
     return buffer.getvalue()
@@ -1222,6 +1287,9 @@ def render_submission_product_preview_pdf(docx_content):
 
 def build_filled_submission_product_docx(matrix, profile, product_code):
     """Use the supplied data-driven routine to create a fully populated product."""
+    if product_code in REGIONAL_PRODUCTS:
+        _, template_name = SUBMISSION_PRODUCT_TEMPLATES[product_code]
+        return brand_submission_product((Path(__file__).parent / template_name).read_bytes())
     files = template_population_kit_files()
     product_name, template_name = SUBMISSION_PRODUCT_TEMPLATES[product_code]
     script_name = f"T{product_code[1:]}_{product_name.replace(' ', '_').replace('-', '_')}_populate.txt"
@@ -1264,7 +1332,7 @@ def build_filled_submission_product_docx(matrix, profile, product_code):
         source_path.unlink(missing_ok=True)
     if document_contains_unresolved_markers(content):
         raise ValueError(f"{product_code} still contains an unresolved template marker. Complete the governed source record and regenerate.")
-    return content
+    return brand_submission_product(content)
 
 
 def proposal_value(value, item, action):
@@ -1554,6 +1622,7 @@ def build_funding_proposal_docx(matrix, profile, proposal):
         "Submission control: this document is a compiled proposal draft. It must be checked against the funder's eligibility, approved national pricing, institutional authority and the final signed delivery arrangements before external submission."
     )
     colour_completion_placeholders(document)
+    apply_sadc_letterhead(document)
     buffer = BytesIO()
     document.save(buffer)
     return buffer.getvalue()
