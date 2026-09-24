@@ -18,5 +18,6 @@ streamlit run app.py
 - Exports the selected profile, audit log, pathway and validation rules as a controlled working record.
 - Offers P1a (the supplied Final Programme Document) and P1b (the supplied Programme Summary Brief) as regional documents without requiring an innovation selection. P2–P9 retain their matrix-driven population, including the existing P5 brief product.
 - Applies the supplied SADC Secretariat header and contact footer to generated Word products and funding proposals; the same files power the PDF preview.
+- Separates P1a/P1b from P2–P9 into two submission-document tabs. The other products load only when their tab opens, while the stage and open-action panels are collapsed on the submission workspace.
 
 The app deliberately does not create plausible content for missing evidence. It identifies a gap, directs the user to the relevant research process, and records the completion decision.

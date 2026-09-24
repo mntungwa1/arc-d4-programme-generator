@@ -806,62 +806,37 @@ def show_submission_ready_report(matrix, profile=None):
         "The submission package consists of the defined programme, concept, summary, adoption, communication and "
         "implementation products. The readiness board confirms that each product has reached the completed delivery state."
     )
-    board_display = [column for column in ["Product", "Name", "Template", "Working draft", "VALIDATION-READY", "Submission"] if column in board.columns]
-    st.dataframe(display_split_programme_product(board)[board_display], hide_index=True, use_container_width=True)
-    st.caption("P1a and P1b share the P1 readiness decision in the controlled matrix.")
-    if not products.empty:
-        st.caption("Governed product definitions")
-        st.dataframe(products, hide_index=True, use_container_width=True, height=260)
-
-    st.markdown("### Programme documents and innovation-specific products")
+    st.markdown("### Submission documents")
     selected_innovation = profile_value(profile or {}, "innovation_name", "name")
-    if not selected_innovation:
-        st.info("Select an innovation in the left-hand innovation register to prepare the innovation-specific P2-P9 products. P1a and P1b are regional documents and are available below.")
-    else:
-        st.write(
-            f"P2-P9 are populated with the controlled record for **{selected_innovation}**. "
-            "Each innovation-specific report is populated from the available D2/D3 and costing records. Where a required national or Member State decision sits outside the Programme's authority, the report names the responsible holder and action instead of leaving a placeholder.")
-    available_products = [code for code in SUBMISSION_PRODUCT_TEMPLATES if code in REGIONAL_PRODUCTS or selected_innovation]
-    for start in range(0, len(available_products), 3):
-        columns = st.columns(3)
-        for column, product_code in zip(columns, available_products[start:start + 3]):
-            product_name, _ = SUBMISSION_PRODUCT_TEMPLATES[product_code]
-            with column:
-                st.markdown(f"**{product_code} — {product_name}**")
-                if product_code in REGIONAL_PRODUCTS:
-                    st.caption("SADC regional programme document")
-                if product_code == "P4":
-                    st.caption("Manual workshop tool; it does not affect programme-delivery readiness.")
-                try:
-                    product_docx = build_filled_submission_product_docx(matrix, profile or {}, product_code)
-                    if st.button(
-                        f"Preview {product_code}",
-                        key=f"preview_submission_{product_code}_{selected_innovation}",
-                        use_container_width=True,
-                    ):
-                        st.session_state.submission_preview_product = product_code
-                    st.download_button(
-                        f"Download {product_code}",
-                        data=product_docx,
-                        file_name=product_filename(product_code, selected_innovation),
-                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                        key=f"download_submission_{product_code}_{selected_innovation}",
-                        use_container_width=True,
-                    )
-                except Exception as exc:
-                    st.error(f"{product_code} template could not be prepared: {exc}")
-
-    selected_preview = st.session_state.get("submission_preview_product")
-    if selected_preview in SUBMISSION_PRODUCT_TEMPLATES and (selected_preview in REGIONAL_PRODUCTS or selected_innovation):
-        preview_name, _ = SUBMISSION_PRODUCT_TEMPLATES[selected_preview]
-        st.markdown("### Full-width document preview")
-        st.caption(f"{selected_preview} — {preview_name}. Select another Preview button above to change the document.")
-        try:
-            preview_docx = build_filled_submission_product_docx(matrix, profile or {}, selected_preview)
-            preview_pdf = render_submission_product_preview_pdf(preview_docx)
-            st.pdf(preview_pdf, height="stretch", key=f"pdf_preview_{selected_preview}_{selected_innovation}")
-        except Exception as exc:
-            st.error(f"{selected_preview} preview could not be prepared: {exc}")
+    programme_tab, other_tab = st.tabs(
+        ["P1a and P1b — Programme documents", "Other products — P2 to P9"],
+        key="submission_product_tab",
+        on_change="rerun",
+    )
+    if programme_tab.open:
+        with programme_tab:
+            st.caption("The regional programme document and its summary brief are ready to preview or download.")
+            show_submission_product_buttons(matrix, profile or {}, ["P1a", "P1b"], selected_innovation)
+            st.caption("P1a and P1b share the P1 readiness decision in the controlled matrix.")
+    if other_tab.open:
+        with other_tab:
+            if selected_innovation:
+                st.caption(f"Innovation-specific products for {selected_innovation}. Select another innovation in the sidebar to change the record.")
+                show_submission_product_buttons(
+                    matrix, profile or {},
+                    [code for code in SUBMISSION_PRODUCT_TEMPLATES if code not in REGIONAL_PRODUCTS],
+                    selected_innovation,
+                )
+            else:
+                st.info("Select an innovation in the sidebar to prepare P2–P9.")
+            with st.expander("Product readiness and definitions", expanded=False):
+                board_display = [column for column in ["Product", "Name", "Template", "Working draft", "VALIDATION-READY", "Submission"] if column in board.columns]
+                other_board = display_split_programme_product(board)
+                other_board = other_board.loc[~other_board["Product"].isin(REGIONAL_PRODUCTS)] if "Product" in other_board.columns else other_board
+                st.dataframe(other_board[board_display], hide_index=True, use_container_width=True)
+                if not products.empty:
+                    st.caption("Governed product definitions")
+                    st.dataframe(products, hide_index=True, use_container_width=True, height=260)
 
     st.markdown("### 4. D3 final readiness line")
     st.write(
@@ -890,6 +865,50 @@ def show_submission_ready_report(matrix, profile=None):
     st.divider()
     with st.expander("Compile a funding proposal for the selected innovation"):
         show_funding_proposal_workspace(matrix, profile or {})
+
+
+def show_submission_product_buttons(matrix, profile, product_codes, selected_innovation):
+    """Render buttons and the preview within the currently selected product tab."""
+    for start in range(0, len(product_codes), 3):
+        batch = product_codes[start:start + 3]
+        columns = st.columns(len(batch))
+        for column, product_code in zip(columns, batch):
+            product_name, _ = SUBMISSION_PRODUCT_TEMPLATES[product_code]
+            with column:
+                with st.container(border=True):
+                    st.markdown(f"**{product_code} — {product_name}**")
+                    if product_code == "P4":
+                        st.caption("Manual workshop tool; it does not affect programme-delivery readiness.")
+                    try:
+                        product_docx = build_filled_submission_product_docx(matrix, profile, product_code)
+                        if st.button(
+                            f"Preview {product_code}",
+                            key=f"preview_submission_{product_code}_{selected_innovation}",
+                            use_container_width=True,
+                        ):
+                            st.session_state.submission_preview_product = product_code
+                        st.download_button(
+                            f"Download {product_code}",
+                            data=product_docx,
+                            file_name=product_filename(product_code, selected_innovation),
+                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                            key=f"download_submission_{product_code}_{selected_innovation}",
+                            use_container_width=True,
+                        )
+                    except Exception as exc:
+                        st.error(f"{product_code} could not be prepared: {exc}")
+
+    selected_preview = st.session_state.get("submission_preview_product")
+    if selected_preview in product_codes:
+        preview_name, _ = SUBMISSION_PRODUCT_TEMPLATES[selected_preview]
+        st.markdown("### Document preview")
+        st.caption(f"{selected_preview} — {preview_name}. Select another Preview button above to change the document.")
+        try:
+            preview_docx = build_filled_submission_product_docx(matrix, profile, selected_preview)
+            preview_pdf = render_submission_product_preview_pdf(preview_docx)
+            st.pdf(preview_pdf, height="stretch", key=f"pdf_preview_{selected_preview}_{selected_innovation}")
+        except Exception as exc:
+            st.error(f"{selected_preview} preview could not be prepared: {exc}")
 
 
 def proposal_money(value):
@@ -1732,8 +1751,13 @@ if not selected_portfolio.empty:
 st.title("ARC D4 Delivery Platform")
 st.caption("A controlled programme record that routes a portfolio innovation through admission, appraisal, verification, generation and product readiness.")
 workspace = st.radio("Workspace", ["Programme command", "Workstream C — portfolio admission", "Workstream D — innovation delivery", "Research and verification", "Products and readiness", "Submission-ready report", "Funding proposal"], horizontal=True)
-show_stage_callout(matrix, st.session_state.selected_stage)
-show_correction_callout(matrix, profile, "Selected innovation: open actions")
+if workspace == "Submission-ready report":
+    with st.expander("Current stage and open actions", expanded=False):
+        show_stage_callout(matrix, st.session_state.selected_stage)
+        show_correction_callout(matrix, profile, "Selected innovation: open actions")
+else:
+    show_stage_callout(matrix, st.session_state.selected_stage)
+    show_correction_callout(matrix, profile, "Selected innovation: open actions")
 
 if workspace == "Programme command":
     stages = table(matrix, "01_Stages")
