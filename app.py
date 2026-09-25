@@ -881,51 +881,108 @@ def show_submission_ready_report(matrix, profile=None):
         show_funding_proposal_workspace(matrix, profile or {})
 
 
-def show_submission_product_buttons(matrix, profile, product_codes, selected_innovation):
-    """Render buttons and the preview within the currently selected product tab."""
-    for start in range(0, len(product_codes), 3):
-        batch = product_codes[start:start + 3]
-        columns = st.columns(len(batch))
-        for column, product_code in zip(columns, batch):
-            product_name, _ = SUBMISSION_PRODUCT_TEMPLATES[product_code]
-            with column:
-                with st.container(border=True):
-                    st.markdown(f"**{product_code} — {product_name}**")
-                    if product_code == "P4":
-                        st.caption("Manual workshop tool; it does not affect programme-delivery readiness.")
-                    elif product_code in {"P5", "P7", "P8"}:
-                        st.caption("Programme-wide product; its contents do not change with the sidebar selection.")
-                    try:
-                        product_docx = build_filled_submission_product_docx(matrix, profile, product_code)
-                        if st.button(
-                            f"Preview {product_code}",
-                            key=f"preview_submission_{product_code}_{selected_innovation}",
-                            use_container_width=True,
-                        ):
-                            st.session_state.submission_preview_product = product_code
-                        st.download_button(
-                            f"Download {product_code}",
-                            data=product_docx,
-                            file_name=product_filename(product_code, selected_innovation),
-                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                            key=f"download_submission_{product_code}_{selected_innovation}",
-                            use_container_width=True,
-                        )
-                    except Exception as exc:
-                        st.error(f"{product_code} could not be prepared: {exc}")
+PRODUCT_HUB_META = {
+    "P1a": ("#f4512a", "▤", "Final SADC DRM Programme", "1"),
+    "P1b": ("#f5a400", "▤", "SADC Innovations Programme Policy Brief", "2"),
+    "P2": ("#65a30d", "✦", "Project Concept Notes", "3"),
+    "P3": ("#1396b4", "▤", "Implementation Plan", "4"),
+    "P4": ("#4662c9", "▤", "Validation Workshop Pack", "5"),
+    "P5": ("#7e45d1", "▤", "Summary Brief", "6"),
+    "P6": ("#d94645", "🤝", "Member State Adoption Plan", "7"),
+    "P7": ("#f17811", "⌁", "Public Warning & Communication Plan", "8"),
+    "P8": ("#07899f", "▤", "Terms of Reference", "9"),
+    "P9": ("#1599b4", "◆", "Completeness Annex", "10"),
+}
+
+
+def show_submission_product_hub(matrix, profile, product_codes, selected_innovation):
+    """Use the approved programme-hub presentation without changing product controls."""
+    st.markdown(
+        """
+        <style>
+        .arc-hub-title {text-align:center; color:#07366e; font-weight:800; font-size:1.05rem; margin:.25rem 0 .75rem;}
+        .arc-hub-core {background:linear-gradient(145deg,#07508e,#04295b); color:#fff; border-radius:28px;
+          min-height:205px; display:flex; align-items:center; justify-content:center; text-align:center;
+          padding:1.4rem; font-size:1.65rem; font-weight:800; line-height:1.12; box-shadow:0 9px 24px rgba(7,62,120,.22);}
+        .arc-product-card {border-radius:22px; padding:.8rem 1rem; margin:.3rem 0 .9rem; color:#10294f;
+          min-height:91px; display:flex; align-items:center; gap:.85rem; box-shadow:0 3px 12px rgba(12,46,85,.10);}
+        .arc-product-number {flex:0 0 45px; height:45px; border-radius:50%; color:#fff; display:flex;
+          align-items:center; justify-content:center; font-weight:800; font-size:1.25rem; box-shadow:0 0 0 5px rgba(255,255,255,.75);}
+        .arc-product-icon {font-size:1.6rem; font-weight:800; width:30px; text-align:center;}
+        .arc-product-name {font-weight:750; line-height:1.16; font-size:.96rem;}
+        .arc-hub-note {text-align:center; color:#52667f; font-size:.82rem; margin:.6rem 0 1rem;}
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+    st.markdown('<div class="arc-hub-title">SADC Innovations Programme — Submission Product Hub</div>', unsafe_allow_html=True)
+
+    left_codes = [code for code in product_codes if code in {"P10", "P9", "P8", "P7", "P6"}]
+    right_codes = [code for code in product_codes if code not in left_codes]
+    # Preserve a balanced figure when only a subset is being shown.
+    if not left_codes:
+        left_codes, right_codes = product_codes[::2], product_codes[1::2]
+
+    left, centre, right = st.columns([4.7, 2.3, 4.7], gap="medium")
+    with centre:
+        st.markdown('<div class="arc-hub-core">SADC<br>Innovations<br>Programme</div>', unsafe_allow_html=True)
+        st.markdown('<div class="arc-hub-note">Choose an innovation in the sidebar. Preview or download any product lane.</div>', unsafe_allow_html=True)
+
+    def product_lane(column, product_code):
+        colour, icon, title, number = PRODUCT_HUB_META.get(
+            product_code, ("#07366e", "▤", SUBMISSION_PRODUCT_TEMPLATES[product_code][0], product_code)
+        )
+        pale = colour + "18"
+        with column:
+            card, actions = st.columns([3.2, 1.2], gap="small")
+            with card:
+                st.markdown(
+                    f'<div class="arc-product-card" style="background:{pale};">'
+                    f'<div class="arc-product-number" style="background:{colour};">{number}</div>'
+                    f'<div class="arc-product-icon" style="color:{colour};">{icon}</div>'
+                    f'<div class="arc-product-name">{product_code} — {title}</div></div>',
+                    unsafe_allow_html=True,
+                )
+            with actions:
+                try:
+                    product_docx = build_filled_submission_product_docx(matrix, profile, product_code)
+                    if st.button("Preview", key=f"preview_submission_{product_code}_{selected_innovation}", use_container_width=True):
+                        st.session_state.submission_preview_product = product_code
+                    st.download_button(
+                        "Download", data=product_docx, file_name=product_filename(product_code, selected_innovation),
+                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        key=f"download_submission_{product_code}_{selected_innovation}", use_container_width=True,
+                    )
+                except Exception as exc:
+                    st.error(f"{product_code} could not be prepared: {exc}")
+
+    max_rows = max(len(left_codes), len(right_codes))
+    for index in range(max_rows):
+        if index < len(left_codes):
+            product_lane(left, left_codes[index])
+        else:
+            left.markdown("<br>", unsafe_allow_html=True)
+        if index < len(right_codes):
+            product_lane(right, right_codes[index])
+        else:
+            right.markdown("<br>", unsafe_allow_html=True)
 
     selected_preview = st.session_state.get("submission_preview_product")
     if selected_preview in product_codes:
         preview_name, _ = SUBMISSION_PRODUCT_TEMPLATES[selected_preview]
-        st.markdown("### Document preview")
-        st.caption(f"{selected_preview} — {preview_name}. Select another Preview button above to change the document.")
-        try:
-            preview_docx = build_filled_submission_product_docx(matrix, profile, selected_preview)
-            preview_pdf = render_submission_product_preview_pdf(preview_docx)
-            st.pdf(preview_pdf, height="stretch", key=f"pdf_preview_{selected_preview}_{selected_innovation}")
-        except Exception as exc:
-            st.error(f"{selected_preview} preview could not be prepared: {exc}")
+        with st.expander(f"Document preview — {selected_preview}: {preview_name}", expanded=True):
+            st.caption("The preview is the populated product document, not a reconstructed summary.")
+            try:
+                preview_docx = build_filled_submission_product_docx(matrix, profile, selected_preview)
+                preview_pdf = render_submission_product_preview_pdf(preview_docx)
+                st.pdf(preview_pdf, height="stretch", key=f"pdf_preview_{selected_preview}_{selected_innovation}")
+            except Exception as exc:
+                st.error(f"{selected_preview} preview could not be prepared: {exc}")
 
+
+def show_submission_product_buttons(matrix, profile, product_codes, selected_innovation):
+    """Backward-compatible entry point for the approved product-hub interface."""
+    show_submission_product_hub(matrix, profile, product_codes, selected_innovation)
 
 def proposal_money(value):
     """Format a proposal amount without treating an indicative band as a quotation."""
@@ -1930,11 +1987,8 @@ def render_workspace(workspace):
     else:
         show_funding_proposal_workspace(matrix, profile)
 
-submission_group, programme_group = st.tabs(
-    ["Submission and products", "Programme work"],
-    key="workspace_group_tab",
-    on_change="rerun",
-)
+submission_group, programme_group = st.tabs(["Submission and products", "Programme work"])
+
 submission_labels = ["Submission-ready report", "Product readiness", "Funding proposal"]
 programme_labels = [
     "Programme command",
@@ -1942,18 +1996,23 @@ programme_labels = [
     "Workstream D — innovation delivery",
     "Research and verification",
 ]
-with submission_group:
-    submission_tabs = st.tabs(submission_labels, key="submission_workspace_tab", on_change="rerun")
-with programme_group:
-    programme_tabs = st.tabs(programme_labels, key="programme_workspace_tab", on_change="rerun")
 
-if submission_group.open:
-    for label, tab in zip(submission_labels, submission_tabs):
-        if tab.open:
-            with tab:
-                render_workspace(label)
-if programme_group.open:
-    for label, tab in zip(programme_labels, programme_tabs):
-        if tab.open:
-            with tab:
-                render_workspace(label)
+with submission_group:
+    submission_tabs = st.tabs(submission_labels)
+    with submission_tabs[0]:
+        render_workspace("Submission-ready report")
+    with submission_tabs[1]:
+        render_workspace("Product readiness")
+    with submission_tabs[2]:
+        render_workspace("Funding proposal")
+
+with programme_group:
+    programme_tabs = st.tabs(programme_labels)
+    with programme_tabs[0]:
+        render_workspace("Programme command")
+    with programme_tabs[1]:
+        render_workspace("Workstream C — portfolio admission")
+    with programme_tabs[2]:
+        render_workspace("Workstream D — innovation delivery")
+    with programme_tabs[3]:
+        render_workspace("Research and verification")
