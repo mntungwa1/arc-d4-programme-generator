@@ -649,7 +649,7 @@ def display_split_programme_product(board):
     return pd.DataFrame(rows, columns=board.columns)
 
 
-def show_product_readiness_callout(matrix):
+def show_product_readiness_callout(matrix, key_prefix="readiness"):
     """Show v3.3 tier-aware readiness, driven by distinct outstanding facts."""
     board = readiness_board(matrix)
     facts = table(matrix, "40_Outstanding_Facts")
@@ -713,7 +713,7 @@ def show_product_readiness_callout(matrix):
             checklist.append(("Record final verification", "Update the Outstanding Facts status and the governed decision record, then verify the submission status on the Readiness Board.", waiting_on))
             completed = 0
             for number, (action, detail, owner) in enumerate(checklist, start=1):
-                key = f"readiness_{product_id}_{number}"
+                key = f"{key_prefix}_{product_id}_{number}"
                 if st.checkbox(f"{number}. {action}", key=key):
                     completed += 1
                 st.caption(detail)
@@ -1864,7 +1864,7 @@ def render_workspace(workspace):
         with current:
             selected_stage_panel(matrix, st.session_state.selected_stage, profile)
         st.subheader("Product readiness")
-        show_product_readiness_callout(matrix)
+        show_product_readiness_callout(matrix, "command_readiness")
 
     elif workspace == "Workstream C — portfolio admission":
         st.subheader("Workstream C — portfolio admission")
@@ -1958,7 +1958,7 @@ def render_workspace(workspace):
         products = readiness_board(matrix)
         product, detail = st.columns([3, 1], gap="large")
         with product:
-            show_product_readiness_callout(matrix)
+            show_product_readiness_callout(matrix, "product_readiness")
             st.subheader("Product sets")
             st.dataframe(table(matrix, "11_Output_Products"), hide_index=True, use_container_width=True)
             st.subheader("Pre-generation gate for selected innovation")
