@@ -753,7 +753,7 @@ def show_product_readiness_callout(matrix, key_prefix="readiness"):
 
 
 def show_submission_ready_report(matrix, profile=None):
-    """Present the governed Matrix 7 outcome as a submission-ready narrative."""
+    """Show the product hub first; keep programme narrative in collapsed panels."""
     portfolio = table(matrix, "06_Portfolio")
     board = readiness_board(matrix)
     facts = table(matrix, "40_Outstanding_Facts")
@@ -767,111 +767,67 @@ def show_submission_ready_report(matrix, profile=None):
     handovers = facts.loc[
         facts.get("Status", pd.Series(dtype=str)).astype(str).str.contains("handover", case=False, na=False)
     ].copy()
-
-    st.subheader("Submission-ready results")
-    st.success(
-        "Matrix 7 records a complete D3 programme delivery position. The portfolio is scored, "
-        "the submission products are ready, and implementation-specific actions are retained as handovers."
-    )
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Portfolio innovations", len(portfolio))
-    c2.metric("Scored IPI records", len(scored))
-    c3.metric("Submission products ready", f"{ready_count} of {len(board)}")
-    c4.metric("Average IPI", f"{scores.mean():.2f} / 10" if scores.notna().any() else "—")
-
+    selected_innovation = profile_value(profile or {}, "innovation_name", "name")
     selected_record = selected_innovation_record(matrix, profile or {})
-    selected_name = profile_value(profile or {}, "innovation_name", "name")
-    with st.container(border=True):
-        st.markdown(f"**Current innovation: {selected_name}**")
+
+    # Compact product controls sit immediately above the visual hub.
+    product_tabs = st.tabs(["P1a and P1b — Programme documents", "Other products — P2 to P9"])
+    with product_tabs[0]:
+        show_submission_product_buttons(matrix, profile or {}, ["P1a", "P1b"], selected_innovation)
+    with product_tabs[1]:
+        show_submission_product_buttons(
+            matrix, profile or {},
+            [code for code in SUBMISSION_PRODUCT_TEMPLATES if code not in REGIONAL_PRODUCTS],
+            selected_innovation,
+        )
+
+    # Everything before and after the hub remains available, but does not
+    # interrupt the visual workflow requested for the landing view.
+    with st.expander("Submission-ready report, programme context and open actions", expanded=False):
+        st.subheader("Submission-ready results")
+        st.success(
+            "Matrix 7 records a complete D3 programme delivery position. The portfolio is scored, "
+            "the submission products are ready, and implementation-specific actions are retained as handovers."
+        )
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Portfolio innovations", len(portfolio))
+        c2.metric("Scored IPI records", len(scored))
+        c3.metric("Submission products ready", f"{ready_count} of {len(board)}")
+        c4.metric("Average IPI", f"{scores.mean():.2f} / 10" if scores.notna().any() else "—")
         if selected_record:
             st.write(
-                f"Portfolio #{clean(selected_record.get('#'))} · "
-                f"IPI {clean(selected_record.get('IPI v2.0 (computed)'))} · "
+                f"**Current innovation:** {selected_innovation}  \n"
+                f"Portfolio #{clean(selected_record.get('#'))} · IPI {clean(selected_record.get('IPI v2.0 (computed)'))} · "
                 f"Evidence confidence: {clean(selected_record.get('Confidence'))}"
             )
         else:
-            st.caption("This innovation has no matching row in the governed matrix yet.")
+            st.caption(f"Current innovation: {selected_innovation}. This record has no matching row in the governed matrix yet.")
+        show_stage_callout(matrix, st.session_state.selected_stage)
+        show_correction_callout(matrix, profile or {}, "Selected innovation: open actions")
+        st.markdown("### Portfolio prioritisation result")
+        display = [column for column in ["#", "Innovation", "Streams", "IPI v2.0 (computed)", "Confidence"] if column in top_ten.columns]
+        st.dataframe(top_ten[display], hide_index=True, use_container_width=True)
+        st.markdown("### Submission product definitions")
+        board_display = [column for column in ["Product", "Name", "Template", "Working draft", "VALIDATION-READY", "Submission"] if column in board.columns]
+        st.dataframe(display_split_programme_product(board)[board_display], hide_index=True, use_container_width=True)
+        if not products.empty:
+            st.dataframe(products, hide_index=True, use_container_width=True, height=260)
 
-    st.markdown("### 1. Executive results statement")
-    st.write(
-        f"The D2/D3 evidence record has been consolidated into a scored portfolio of {len(portfolio)} innovations. "
-        f"All {len(scored)} records have an Innovation Priority Index (IPI v2.0), allowing the programme to present "
-        "a transparent evidence-led shortlist rather than an unranked catalogue. The programme has completed its "
-        f"delivery readiness position, with {ready_count} of {len(board)} defined submission products marked ready."
-    )
-    st.write(
-        "The IPI schedule applies the fixed D3 weighting across measurable risk-reduction impact, regional and Sendai "
-        "alignment, GESI responsiveness, technical and institutional feasibility, value for money, transferability and "
-        "sustainability. Source-derived D2/D3 determinations are documented in the governed matrix and remain traceable "
-        "to the portfolio evidence record."
-    )
-
-    st.markdown("### 2. Portfolio prioritisation result")
-    st.write(
-        "The following ranked records form the leading evidence-led portfolio for the submission narrative. The detailed "
-        "matrix remains the authoritative record for each underlying criterion and evidence basis."
-    )
-    display = [column for column in ["#", "Innovation", "Streams", "IPI v2.0 (computed)", "Confidence"] if column in top_ten.columns]
-    st.dataframe(top_ten[display], hide_index=True, use_container_width=True)
-
-    st.markdown("### 3. Submission product pack")
-    st.write(
-        "The submission package consists of the defined programme, concept, summary, adoption, communication and "
-        "implementation products. The readiness board confirms that each product has reached the completed delivery state."
-    )
-    st.markdown("### Submission documents")
-    selected_innovation = profile_value(profile or {}, "innovation_name", "name")
-    st.info(f"Working on: **{selected_innovation}**. P2, P3, P6 and P9 use this innovation; the other products cover the regional programme.")
-    programme_tab, other_tab = st.tabs(["P1a and P1b — Programme documents", "Other products — P2 to P9"])
-    with programme_tab:
-        st.caption("These two documents cover the regional programme as a whole and stay the same when the selected innovation changes.")
-        show_submission_product_buttons(matrix, profile or {}, ["P1a", "P1b"], selected_innovation)
-        st.caption("P1a and P1b share the P1 readiness decision in the controlled matrix.")
-    with other_tab:
-        if selected_innovation:
-            st.caption(f"Selected innovation: {selected_innovation}. P2, P3, P6 and P9 update with this record. P4, P5, P7 and P8 are programme-wide documents.")
-            show_submission_product_buttons(
-                matrix, profile or {},
-                [code for code in SUBMISSION_PRODUCT_TEMPLATES if code not in REGIONAL_PRODUCTS],
-                selected_innovation,
-            )
+    with st.expander("D3 readiness line, implementation handovers and conclusion", expanded=False):
+        st.markdown(
+            "The submission is supported by a completed score and tier record, documented gap-closure logic, "
+            "investment-ready innovation profiles, cost and recurrent-cost considerations, institutional and legal "
+            "pathways, inclusion evidence, risk/results information and the applicable Member State decision route."
+        )
+        if handovers.empty:
+            st.info("No post-submission handovers are recorded.")
         else:
-            st.info("Select an innovation in the sidebar to prepare P2–P9.")
-        with st.expander("Product readiness and definitions", expanded=False):
-            board_display = [column for column in ["Product", "Name", "Template", "Working draft", "VALIDATION-READY", "Submission"] if column in board.columns]
-            other_board = display_split_programme_product(board)
-            other_board = other_board.loc[~other_board["Product"].isin(REGIONAL_PRODUCTS)] if "Product" in other_board.columns else other_board
-            st.dataframe(other_board[board_display], hide_index=True, use_container_width=True)
-            if not products.empty:
-                st.caption("Governed product definitions")
-                st.dataframe(products, hide_index=True, use_container_width=True, height=260)
-
-    st.markdown("### 4. D3 final readiness line")
-    st.write(
-        "The submission is supported by a completed score and tier record, documented gap-closure logic, investment-ready "
-        "innovation profiles, cost and recurrent-cost considerations, institutional and legal pathways, inclusion evidence, "
-        "risk/results information and the applicable Member State decision route. This establishes a completed programme "
-        "delivery record while preserving national ownership of localisation and adoption decisions."
-    )
-
-    st.markdown("### 5. Post-submission implementation handovers")
-    st.write(
-        "The following actions are not programme delivery blockers. They are the receiving institutions' implementation, "
-        "localisation and adoption responsibilities after submission, and are retained to preserve accountability."
-    )
-    if handovers.empty:
-        st.info("No post-submission handovers are recorded.")
-    else:
-        handover_columns = [column for column in ["Fact", "What is missing", "Who holds it", "Event that produces it", "Status"] if column in handovers.columns]
-        st.dataframe(handovers[handover_columns], hide_index=True, use_container_width=True)
-
-    st.markdown("### 6. Submission conclusion")
-    st.write(
-        "The programme can be submitted as a complete, evidence-led D3 delivery package. The ranked portfolio, product "
-        "pack and governance trail are available in the matrix-backed platform; subsequent Member State and partner actions "
-        "are clearly assigned as implementation handovers rather than unresolved programme work.")
-    st.divider()
-    st.info("Use the **Funding proposal** tab above to compile a funder-specific proposal for the selected innovation.")
+            handover_columns = [column for column in ["Fact", "What is missing", "Who holds it", "Event that produces it", "Status"] if column in handovers.columns]
+            st.dataframe(handovers[handover_columns], hide_index=True, use_container_width=True)
+        st.success(
+            "The programme can be submitted as a complete, evidence-led D3 delivery package. "
+            "Use the Funding proposal tab for funder-specific proposals."
+        )
 
 
 PRODUCT_HUB_META = {
