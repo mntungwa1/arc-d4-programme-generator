@@ -394,7 +394,7 @@ def cost_analysis_form(profile, name_key):
         profile["cost_setup_high"] = st.number_input("Set-up high estimate (USD)", min_value=0.0, value=setup_high_default, step=1000.0, key=f"{name_key}_cost_setup_high")
     with right:
         units = ["", "USD per year", "USD per person reached", "USD per household per year", "USD per dollar transferred", "USD premium per year", "Premium and fee dependent"]
-        raw_unit = benchmark[5] if benchmark else ""
+        raw_unit = benchmark[5] if benchmark and len(benchmark) > 5 else "USD per year"
         default_unit = (
             "USD per person reached" if "person" in raw_unit else
             "USD per household per year" if "household" in raw_unit else
