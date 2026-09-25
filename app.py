@@ -822,35 +822,29 @@ def show_submission_ready_report(matrix, profile=None):
     st.markdown("### Submission documents")
     selected_innovation = profile_value(profile or {}, "innovation_name", "name")
     st.info(f"Working on: **{selected_innovation}**. P2, P3, P6 and P9 use this innovation; the other products cover the regional programme.")
-    programme_tab, other_tab = st.tabs(
-        ["P1a and P1b — Programme documents", "Other products — P2 to P9"],
-        key="submission_product_tab",
-        on_change="rerun",
-    )
-    if programme_tab.open:
-        with programme_tab:
-            st.caption("These two documents cover the regional programme as a whole and stay the same when the selected innovation changes.")
-            show_submission_product_buttons(matrix, profile or {}, ["P1a", "P1b"], selected_innovation)
-            st.caption("P1a and P1b share the P1 readiness decision in the controlled matrix.")
-    if other_tab.open:
-        with other_tab:
-            if selected_innovation:
-                st.caption(f"Selected innovation: {selected_innovation}. P2, P3, P6 and P9 update with this record. P4, P5, P7 and P8 are programme-wide documents.")
-                show_submission_product_buttons(
-                    matrix, profile or {},
-                    [code for code in SUBMISSION_PRODUCT_TEMPLATES if code not in REGIONAL_PRODUCTS],
-                    selected_innovation,
-                )
-            else:
-                st.info("Select an innovation in the sidebar to prepare P2–P9.")
-            with st.expander("Product readiness and definitions", expanded=False):
-                board_display = [column for column in ["Product", "Name", "Template", "Working draft", "VALIDATION-READY", "Submission"] if column in board.columns]
-                other_board = display_split_programme_product(board)
-                other_board = other_board.loc[~other_board["Product"].isin(REGIONAL_PRODUCTS)] if "Product" in other_board.columns else other_board
-                st.dataframe(other_board[board_display], hide_index=True, use_container_width=True)
-                if not products.empty:
-                    st.caption("Governed product definitions")
-                    st.dataframe(products, hide_index=True, use_container_width=True, height=260)
+    programme_tab, other_tab = st.tabs(["P1a and P1b — Programme documents", "Other products — P2 to P9"])
+    with programme_tab:
+        st.caption("These two documents cover the regional programme as a whole and stay the same when the selected innovation changes.")
+        show_submission_product_buttons(matrix, profile or {}, ["P1a", "P1b"], selected_innovation)
+        st.caption("P1a and P1b share the P1 readiness decision in the controlled matrix.")
+    with other_tab:
+        if selected_innovation:
+            st.caption(f"Selected innovation: {selected_innovation}. P2, P3, P6 and P9 update with this record. P4, P5, P7 and P8 are programme-wide documents.")
+            show_submission_product_buttons(
+                matrix, profile or {},
+                [code for code in SUBMISSION_PRODUCT_TEMPLATES if code not in REGIONAL_PRODUCTS],
+                selected_innovation,
+            )
+        else:
+            st.info("Select an innovation in the sidebar to prepare P2–P9.")
+        with st.expander("Product readiness and definitions", expanded=False):
+            board_display = [column for column in ["Product", "Name", "Template", "Working draft", "VALIDATION-READY", "Submission"] if column in board.columns]
+            other_board = display_split_programme_product(board)
+            other_board = other_board.loc[~other_board["Product"].isin(REGIONAL_PRODUCTS)] if "Product" in other_board.columns else other_board
+            st.dataframe(other_board[board_display], hide_index=True, use_container_width=True)
+            if not products.empty:
+                st.caption("Governed product definitions")
+                st.dataframe(products, hide_index=True, use_container_width=True, height=260)
 
     st.markdown("### 4. D3 final readiness line")
     st.write(
