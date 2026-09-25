@@ -871,8 +871,7 @@ def show_submission_ready_report(matrix, profile=None):
         "pack and governance trail are available in the matrix-backed platform; subsequent Member State and partner actions "
         "are clearly assigned as implementation handovers rather than unresolved programme work.")
     st.divider()
-    with st.expander("Compile a funding proposal for the selected innovation"):
-        show_funding_proposal_workspace(matrix, profile or {})
+    st.info("Use the **Funding proposal** tab above to compile a funder-specific proposal for the selected innovation.")
 
 
 PRODUCT_HUB_META = {
