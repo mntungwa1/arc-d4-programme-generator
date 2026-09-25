@@ -737,14 +737,14 @@ def show_product_readiness_callout(matrix, key_prefix="readiness"):
                 st.text_input(
                     "Accountable owner / route",
                     value="" if waiting_on in {"", "—"} else waiting_on,
-                    key=f"readiness_owner_{product_id}",
+                    key=f"{key_prefix}_owner_{product_id}",
                 )
             with due_col:
-                st.date_input("Target completion date", value=None, key=f"readiness_due_{product_id}")
+                st.date_input("Target completion date", value=None, key=f"{key_prefix}_due_{product_id}")
             st.text_input(
                 "Evidence reference or URL",
                 placeholder="Source, evidence record, decision log or shared-drive link",
-                key=f"readiness_evidence_{product_id}",
+                key=f"{key_prefix}_evidence_{product_id}",
             )
             st.progress(completed / len(checklist), text=f"Closure checklist: {completed} of {len(checklist)} actions completed")
             if d2:
@@ -875,7 +875,7 @@ def show_submission_product_hub(matrix, profile, product_codes, selected_innovat
     left, centre, right = st.columns([4.7, 2.3, 4.7], gap="medium")
     with centre:
         st.markdown('<div class="arc-hub-core">SADC<br>Innovations<br>Programme</div>', unsafe_allow_html=True)
-        st.markdown('<div class="arc-hub-note">Choose an innovation in the sidebar. Preview or download any product lane.</div>', unsafe_allow_html=True)
+        st.markdown('<div class="arc-hub-note">Choose an innovation above. Preview or download any product lane.</div>', unsafe_allow_html=True)
 
     def product_lane(column, product_code):
         colour, icon, title, number = PRODUCT_HUB_META.get(
