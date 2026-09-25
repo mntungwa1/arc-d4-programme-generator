@@ -23,7 +23,7 @@ from docx.oxml.ns import qn
 from docx.shared import Inches, Pt, RGBColor
 from supabase import create_client
 
-st.set_page_config(page_title="ARC D4 Delivery Platform", page_icon="◆", layout="wide")
+st.set_page_config(page_title="ARC D4 Delivery Platform", page_icon="◆", layout="wide", initial_sidebar_state="collapsed")
 
 SUPABASE_URL = "https://wrejrxzgyuxsfbxutezg.supabase.co"
 SUPABASE_KEY = "sb_publishable_UfYoG2ZgKP0nLA5KGwEG6w_2rCP9_R8"
@@ -1809,7 +1809,7 @@ def on_innovation_change():
                 "proposal_results"):
         st.session_state.pop(key, None)
 
-selected_name = st.sidebar.selectbox(
+selected_name = st.selectbox(
     "Innovation to work on", names, key="innovation_selector",
     on_change=on_innovation_change,
 )
