@@ -44,6 +44,12 @@ SADC_TEMPLATE_PACK_PARTS = [
 ]
 # Controlled source approved for P1a submission. This is never rewritten by automation.
 FINAL_P1A_SUBMISSION_DOCUMENT = Path(__file__).parent / "Final_SADC_DRM_Innovation_Programme_Reviewed.docx"
+# Faithful PDF rendering of the approved P1a source, split only for reliable deployment.
+# The original approved Word source remains untouched.
+P1A_SUBMISSION_PREVIEW_PARTS = [
+    Path(__file__).parent / f"P1a_Submission_Preview.part{number:02d}"
+    for number in range(1, 17)
+]
 T10_TRANSVERSAL_FUNDING_TEMPLATE = Path(__file__).parent / "T10_Transversal_Funding_Proposal.docx"
 T10_TRANSVERSAL_FUNDING_TEMPLATE_PARTS = [
     Path(__file__).parent / f"T10_Transversal_Funding_Proposal.part{number:02d}"
@@ -954,8 +960,13 @@ def show_submission_product_hub(matrix, profile, product_codes, selected_innovat
         with st.expander(f"Document preview — {selected_preview}: {preview_name}", expanded=True):
             st.caption("The preview is the populated product document, not a reconstructed summary.")
             try:
-                preview_docx = build_filled_submission_product_docx(matrix, profile, selected_preview)
-                preview_pdf = render_submission_product_preview_pdf(preview_docx)
+                if selected_preview == "P1a":
+                    # P1a is a controlled final submission document. Use its faithful
+                    # pre-rendered PDF preview so no template mutation is performed.
+                    preview_pdf = p1a_submission_preview_pdf()
+                else:
+                    preview_docx = build_filled_submission_product_docx(matrix, profile, selected_preview)
+                    preview_pdf = render_submission_product_preview_pdf(preview_docx)
                 st.pdf(preview_pdf, height="stretch", key=f"pdf_preview_{selected_preview}_{selected_innovation}")
             except Exception as exc:
                 st.error(f"{selected_preview} preview could not be prepared: {exc}")
@@ -1368,6 +1379,21 @@ def render_submission_product_preview_pdf(docx_content):
             raise RuntimeError(f"Could not render the document preview: {details[:300]}")
         return pdf_path.read_bytes()
 
+
+
+@st.cache_data(show_spinner=False)
+def p1a_submission_preview_pdf():
+    """Return the faithful rendered PDF of the controlled P1a source."""
+    encoded_parts = [
+        part.read_text(encoding="utf-8")
+        for part in P1A_SUBMISSION_PREVIEW_PARTS
+        if part.exists()
+    ]
+    if len(encoded_parts) != len(P1A_SUBMISSION_PREVIEW_PARTS):
+        raise FileNotFoundError("The approved P1a preview is not yet available.")
+    encoded = re.sub(r"\s+", "", "".join(encoded_parts))
+    encoded += "=" * (-len(encoded) % 4)
+    return base64.b64decode(encoded)
 
 def build_filled_submission_product_docx(matrix, profile, product_code):
     """Use the supplied data-driven routine to create a fully populated product."""
