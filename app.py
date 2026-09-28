@@ -33,23 +33,29 @@ BOOK = Path(__file__).parent / "ARC_D4_Automation_Matrix.b64"
 SADC_PROPOSAL_TEMPLATE = Path(__file__).parent / "SADC_Proposal_Template.b64"
 SADC_PROPOSAL_TEMPLATE_PARTS = [
     Path(__file__).parent / f"SADC_Proposal_Template.part{number:02d}"
-    for number in range(1, 7)
+    for number in range(1, 5)
+]
+# Final SADC template pack supplied with the revised programme and population code.
+# It is split only for reliable source-control transfer; it is reassembled in memory.
+SADC_TEMPLATE_PACK_PARTS = [
+    Path(__file__).parent / f"SADC_Template_Pack.part{number:02d}"
+    for number in range(1, 22)
 ]
 SUBMISSION_PRODUCT_TEMPLATES = {
-    "P1a": ("Final Programme Document", "SADC_DRM_Innovation_Final_Programme_Document_4.docx"),
-    "P1b": ("Programme Summary Brief", "SADC_DRM_Innovation_Summary_Brief_3.docx"),
+    "P1a": ("Regional Programme Document", "T1_Regional_Programme_Document.docx"),
+    "P1b": ("Programme Summary Brief", "T5_Summary_Brief.docx"),
     "P2": ("Project Concept Note", "T2_Project_Concept_Note.docx"),
     "P3": ("Implementation Plan", "T3_Implementation_Plan.docx"),
-    "P4": ("Validation Workshop Pack", "T4_Validation_Workshop_Pack.docx"),
-    "P5": ("Summary Brief", "T5_Summary_Brief.docx"),
-    "P6": ("Member State Adoption Plan", "T6_Member_State_Adoption_Plan.docx"),
-    "P7": ("Public Warning and Communication Plan", "T7_Public_Warning_Communication_Plan.docx"),
-    "P8": ("Terms of Reference", "T8_Terms_of_Reference.docx"),
-    "P9": ("Completeness Annex", "T9_Completeness_Annex.docx"),
+    "P4": ("Policy Summary Brief", "T5_Summary_Brief.docx"),
+    "P5": ("Member State Adoption Plan", "T6_Member_State_Adoption_Plan.docx"),
+    "P6": ("Public Warning and Communication Plan", "T7_Public_Warning_Communication_Plan.docx"),
+    "P7": ("Terms of Reference", "T8_Terms_of_Reference.docx"),
+    "P8": ("Completeness Annex", "T9_Completeness_Annex.docx"),
+    "P9": ("Transversal Funding Proposal", "T10_Transversal_Funding_Proposal.docx"),
 }
 SUBMISSION_PRODUCT_TEMPLATE_ARCHIVE = Path(__file__).parent / "Submission_Product_Templates.zip.b64"
 TEMPLATE_POPULATION_KIT = Path(__file__).parent / "SADC_Template_Population_Kit.zip.b64"
-REGIONAL_PRODUCTS = {"P1a", "P1b"}
+REGIONAL_PRODUCTS = set()
 SADC_HEADER_IMAGE = Path(__file__).parent / "SADC_Head_New.png"
 SADC_FOOTER_IMAGE = Path(__file__).parent / "SADC_Foot_New.png"
 SADC_HEADER_ASPECT = 290 / 2048
@@ -1253,10 +1259,15 @@ def build_submission_product_docx(matrix, profile, product_code):
 
 @st.cache_data(show_spinner=False)
 def template_population_kit_files():
-    """Read the verified D2/D3 template population kit supplied for the app."""
-    if not TEMPLATE_POPULATION_KIT.exists():
-        raise FileNotFoundError("The D2/D3 template population kit is not available in this deployment.")
-    encoded = re.sub(r"\s+", "", TEMPLATE_POPULATION_KIT.read_text(encoding="utf-8"))
+    """Read the final SADC template pack and its supplied population routines."""
+    pack_parts = [part.read_text(encoding="utf-8") for part in SADC_TEMPLATE_PACK_PARTS if part.exists()]
+    if pack_parts:
+        encoded = "".join(pack_parts)
+    elif TEMPLATE_POPULATION_KIT.exists():
+        encoded = TEMPLATE_POPULATION_KIT.read_text(encoding="utf-8")
+    else:
+        raise FileNotFoundError("The final SADC template population kit is not available in this deployment.")
+    encoded = re.sub(r"\s+", "", encoded)
     encoded += "=" * (-len(encoded) % 4)
     with zipfile.ZipFile(BytesIO(base64.b64decode(encoded))) as archive:
         return {name: archive.read(name) for name in archive.namelist()}
@@ -1328,26 +1339,37 @@ def render_submission_product_preview_pdf(docx_content):
 
 def build_filled_submission_product_docx(matrix, profile, product_code):
     """Use the supplied data-driven routine to create a fully populated product."""
-    if product_code in REGIONAL_PRODUCTS:
-        _, template_name = SUBMISSION_PRODUCT_TEMPLATES[product_code]
-        return brand_submission_product((Path(__file__).parent / template_name).read_bytes())
+    if product_code == "P9":
+        # T10 is a transversal action proposal. The dedicated workspace gathers
+        # the funder-facing inputs; this product entry opens the same governed build.
+        return build_funding_proposal_docx(matrix, profile, {
+            "proposal_title": f"Transversal funding proposal: {profile_value(profile, 'innovation_name', 'name') or 'selected innovation'}",
+            "funder_name": "Prospective funding partner",
+            "funding_window": "To be confirmed with the funding partner",
+            "amount_requested": "",
+            "country_scope": "Regional",
+            "implementation_period": "Five years",
+            "co_financing": "",
+            "funder_priorities": "",
+            "funding_rationale": "",
+        })
     files = template_population_kit_files()
     product_name, template_name = SUBMISSION_PRODUCT_TEMPLATES[product_code]
     script_name = f"T{product_code[1:]}_{product_name.replace(' ', '_').replace('-', '_')}_populate.txt"
     # The supplied filenames use the exact names below; this explicit mapping
     # avoids relying on a display label when selecting source code.
     script_names = {
-        "P1": "T1_Regional_Programme_Document_populate.txt",
+        "P1a": "T1_Regional_Programme_Document_populate.txt",
+        "P1b": "T5_Summary_Brief_populate.txt",
         "P2": "T2_Project_Concept_Note_populate.txt",
         "P3": "T3_Implementation_Plan_populate.txt",
-        "P4": "T4_Validation_Workshop_Pack_populate.txt",
-        "P5": "T5_Summary_Brief_populate.txt",
-        "P6": "T6_Member_State_Adoption_Plan_populate.txt",
-        "P7": "T7_Public_Warning_Communication_Plan_populate.txt",
-        "P8": "T8_Terms_of_Reference_populate.txt",
-        "P9": "T9_Completeness_Annex_populate.txt",
+        "P4": "T5_Summary_Brief_populate.txt",
+        "P5": "T6_Member_State_Adoption_Plan_populate.txt",
+        "P6": "T7_Public_Warning_Communication_Plan_populate.txt",
+        "P7": "T8_Terms_of_Reference_populate.txt",
+        "P8": "T9_Completeness_Annex_populate.txt",
     }
-    if template_name not in files or script_names[product_code] not in files or "ARC_D4_Automation_Matrix.xlsx" not in files:
+    if template_name not in files or script_names.get(product_code) not in files or "ARC_D4_Automation_Matrix.xlsx" not in files:
         raise FileNotFoundError(f"The supplied {product_code} template, population code or matrix is missing from the kit.")
     populator = template_populator(script_names[product_code], files[script_names[product_code]].decode("utf-8"))
     pack = populator.DataPack(BytesIO(files["ARC_D4_Automation_Matrix.xlsx"]))
@@ -1373,7 +1395,8 @@ def build_filled_submission_product_docx(matrix, profile, product_code):
         source_path.unlink(missing_ok=True)
     if document_contains_unresolved_markers(content):
         raise ValueError(f"{product_code} still contains an unresolved template marker. Complete the governed source record and regenerate.")
-    return brand_submission_product(content)
+    # Keep the template's own header and footer intact.
+    return content
 
 
 def proposal_value(value, item, action):
@@ -1663,7 +1686,7 @@ def build_funding_proposal_docx(matrix, profile, proposal):
         "Submission control: this document is a compiled proposal draft. It must be checked against the funder's eligibility, approved national pricing, institutional authority and the final signed delivery arrangements before external submission."
     )
     colour_completion_placeholders(document)
-    apply_sadc_letterhead(document)
+    # T10 carries the revised SADC header and footer in the supplied template.
     buffer = BytesIO()
     document.save(buffer)
     return buffer.getvalue()
