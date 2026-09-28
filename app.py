@@ -793,6 +793,11 @@ def show_submission_ready_report(matrix, profile=None, product_scope="all"):
         with product_tabs[1]:
             show_submission_product_buttons(matrix, profile or {}, individual_codes, selected_innovation)
 
+    # The public programme/document tabs show the product hub only. Supporting
+    # report panels remain available through the full internal report view.
+    if product_scope in {"programme", "individual"}:
+        return
+
     # Everything before and after the hub remains available, but does not
     # interrupt the visual workflow requested for the landing view.
     with st.expander("Submission-ready report, programme context and open actions", expanded=False):
@@ -1825,7 +1830,7 @@ choice_col, add_col = st.columns([3, 1], gap="large")
 with choice_col:
     st.markdown(
         '<div style="color:#0070c0;font-weight:900;font-size:1.12rem;'
-        'margin:0 0 .28rem;">Choose your Innovation</div>',
+        'margin:0 0 .28rem;">Choose Innovation</div>',
         unsafe_allow_html=True,
     )
     selected_name = st.selectbox(
