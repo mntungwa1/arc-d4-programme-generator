@@ -33,7 +33,7 @@ BOOK = Path(__file__).parent / "ARC_D4_Automation_Matrix.b64"
 SADC_PROPOSAL_TEMPLATE = Path(__file__).parent / "SADC_Proposal_Template.b64"
 SADC_PROPOSAL_TEMPLATE_PARTS = [
     Path(__file__).parent / f"SADC_Proposal_Template.part{number:02d}"
-    for number in range(1, 6)
+    for number in range(1, 5)
 ]
 # Final SADC template pack supplied with the revised programme and population code.
 # It is split only for reliable source-control transfer; it is reassembled in memory.
@@ -46,7 +46,7 @@ FINAL_P1A_SUBMISSION_DOCUMENT = Path(__file__).parent / "Final_SADC_DRM_Innovati
 T10_TRANSVERSAL_FUNDING_TEMPLATE = Path(__file__).parent / "T10_Transversal_Funding_Proposal.docx"
 T10_TRANSVERSAL_FUNDING_TEMPLATE_PARTS = [
     Path(__file__).parent / f"T10_Transversal_Funding_Proposal.part{number:02d}"
-    for number in range(1, 5)
+    for number in range(1, 6)
 ]
 SUBMISSION_PRODUCT_TEMPLATES = {
     "P1a": ("Regional Programme Document", "T1_Regional_Programme_Document.docx"),
