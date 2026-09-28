@@ -1829,15 +1829,16 @@ def build_t10_transversal_funding_proposal(matrix, profile):
     # and keep the file present while docxtpl resolves all embedded assets.
     if not all(path.exists() for path in T10_TRANSVERSAL_FUNDING_TEMPLATE_PARTS):
         raise FileNotFoundError("The packaged T10 proposal template parts are not available.")
-    template_path = None
-    try:
-        template_bytes = base64.b64decode(
-            "".join(path.read_text(encoding="utf-8") for path in T10_TRANSVERSAL_FUNDING_TEMPLATE_PARTS)
-        )
-        with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as source:
-            source.write(template_bytes)
-            source.flush()
-            template_path = Path(source.name)
+    template_bytes = base64.b64decode(
+        "".join(path.read_text(encoding="utf-8") for path in T10_TRANSVERSAL_FUNDING_TEMPLATE_PARTS)
+    )
+    # A named directory keeps the template and any docxtpl support assets
+    # available until rendering has fully completed.
+    with tempfile.TemporaryDirectory(prefix="arc_d4_t10_") as temp_dir:
+        template_path = Path(temp_dir) / "T10_Transversal_Funding_Proposal.docx"
+        template_path.write_bytes(template_bytes)
+        if not template_path.exists() or template_path.stat().st_size == 0:
+            raise RuntimeError("The packaged T10 template could not be reconstructed.")
         template = DocxTemplate(str(template_path))
         template.render(context, autoescape=True)
         rendered = BytesIO()
@@ -1847,9 +1848,6 @@ def build_t10_transversal_funding_proposal(matrix, profile):
         output = BytesIO()
         document.save(output)
         return output.getvalue()
-    finally:
-        if template_path:
-            template_path.unlink(missing_ok=True)
 
 
 def show_t10_funding_proposal_workspace(matrix, profile):
