@@ -44,6 +44,10 @@ SADC_TEMPLATE_PACK_PARTS = [
 # Controlled source approved for P1a submission. This is never rewritten by automation.
 FINAL_P1A_SUBMISSION_DOCUMENT = Path(__file__).parent / "Final_SADC_DRM_Innovation_Programme_Reviewed.docx"
 T10_TRANSVERSAL_FUNDING_TEMPLATE = Path(__file__).parent / "T10_Transversal_Funding_Proposal.docx"
+T10_TRANSVERSAL_FUNDING_TEMPLATE_PARTS = [
+    Path(__file__).parent / f"T10_Transversal_Funding_Proposal.part{number:02d}"
+    for number in range(1, 5)
+]
 SUBMISSION_PRODUCT_TEMPLATES = {
     "P1a": ("Regional Programme Document", "T1_Regional_Programme_Document.docx"),
     "P1b": ("Programme Summary Brief", "T5_Summary_Brief.docx"),
@@ -1820,19 +1824,32 @@ def build_t10_transversal_funding_proposal(matrix, profile):
         "annexes": [{"n": "1", "name": "Selected innovation profile and evidence record", "status": "Available from the governed platform"}, {"n": "2", "name": "ARC D4 programme outputs and delivery pathway", "status": "Available from the governed platform"}, {"n": "3", "name": "Cost analysis and national pricing basis", "status": "To be completed or confirmed"}],
         "decl": {"text": "This proposal is generated from the controlled innovation record. It must be reviewed and approved by the accountable institution before external submission.", "prepared_by": "Academy of Resilience and Continuity", "approved_by": proposal_placeholder("Approving authority", "Insert the authorised institutional approver before submission.")},
     }
-    # Render directly from the controlled repository template.  A temporary
-    # source file can disappear while docxtpl resolves embedded assets, which
-    # prevents the proposal controls from appearing after the main button is
-    # pressed.
-    template = DocxTemplate(str(T10_TRANSVERSAL_FUNDING_TEMPLATE))
-    template.render(context, autoescape=True)
-    rendered = BytesIO()
-    template.save(rendered)
-    document = Document(BytesIO(rendered.getvalue()))
-    colour_completion_placeholders(document)
-    output = BytesIO()
-    document.save(output)
-    return output.getvalue()
+    # Streamlit Cloud can omit binary Word files during an otherwise valid
+    # deployment. Reassemble the controlled template from its text-safe parts
+    # and keep the file present while docxtpl resolves all embedded assets.
+    if not all(path.exists() for path in T10_TRANSVERSAL_FUNDING_TEMPLATE_PARTS):
+        raise FileNotFoundError("The packaged T10 proposal template parts are not available.")
+    template_path = None
+    try:
+        template_bytes = base64.b64decode(
+            "".join(path.read_text(encoding="utf-8") for path in T10_TRANSVERSAL_FUNDING_TEMPLATE_PARTS)
+        )
+        with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as source:
+            source.write(template_bytes)
+            source.flush()
+            template_path = Path(source.name)
+        template = DocxTemplate(str(template_path))
+        template.render(context, autoescape=True)
+        rendered = BytesIO()
+        template.save(rendered)
+        document = Document(BytesIO(rendered.getvalue()))
+        colour_completion_placeholders(document)
+        output = BytesIO()
+        document.save(output)
+        return output.getvalue()
+    finally:
+        if template_path:
+            template_path.unlink(missing_ok=True)
 
 
 def show_t10_funding_proposal_workspace(matrix, profile):
