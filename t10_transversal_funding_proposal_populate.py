@@ -320,7 +320,7 @@ def cost_block(inv):
                           'replaces these bands with a costed proposal at national prices.')}
 
 def tier_banner(inv):
-    return ('Validation-ready draft. Generated from the D2, D3 and cost-matrix data pack on '
+    return ('Final controlled proposal. Generated from the D2, D3 and cost-matrix data pack on '
             + datetime.date.today().strftime('%d %B %Y') + '. Every field the Programme holds is complete. '
             'Fields held by a Member State appear as requests naming who is being asked. Cost figures are '
             'indicative bands, not quotations.')
@@ -341,9 +341,43 @@ PILLAR_NAME = {'P1': 'Risk data, early warning and anticipatory action',
                'P4': 'Innovation financing, partnerships and scaling',
                'P5': 'Knowledge management, learning and regional replication'}
 
-CONTINGENCY_RATE = 0.10      # never lower; a funder capping it lower is handled in the note
-GOVERNANCE_RATE  = 0.08      # governance and administration of the Action
-SUPPORT_RATE     = 0.07      # programme support costs on the subtotal
+CONTINGENCY_RATE = 0.10      # risk provision, on direct costs
+REPLICATION_RATE = 0.60      # cost of the second and later adopter against the first
+RECURRENT_SHARE  = {1: 1.00, 2: 0.50, 3: 0.50}   # Action share of running cost, by year
+
+# The indirect rate is set by the modality the Action is delivered through, not chosen.
+# United Nations: the joint cost-recovery policy sets 8 per cent for non-thematic
+# contributions and 7 for thematic. The climate funds express the same idea as an
+# implementing entity fee, higher for regional work than for single-country work.
+MODALITY = {
+    'un':                {'rate': 0.08, 'label': 'United Nations non-thematic contribution',
+                          'basis': 'Standard harmonized indirect cost-recovery rate of 8 per cent'},
+    'un-thematic':       {'rate': 0.07, 'label': 'United Nations thematic contribution',
+                          'basis': 'Differentiated rate of 7 per cent for thematic contributions'},
+    'government':        {'rate': 0.05, 'label': 'Programme government cost-sharing',
+                          'basis': 'Differentiated rate of 5 per cent for government cost-sharing'},
+    'adaptation-fund':   {'rate': 0.10, 'label': 'Adaptation Fund, regional project',
+                          'basis': 'Implementing entity fee, capped at 10 per cent for regional projects and 8.5 for single-country'},
+    'green-climate-fund':{'rate': 0.085,'label': 'Green Climate Fund',
+                          'basis': 'Accredited entity fee, within the range the Fund applies'},
+    'european-union':    {'rate': 0.07, 'label': 'European Union flat-rate indirect cost',
+                          'basis': 'Flat-rate indirect cost at the maximum of 7 per cent, where justified'},
+}
+
+# Indicative unit rates for direct management and oversight. These are budgeted
+# directly because they are traceable to the Action. Replace with the institution's
+# own rates before submission; they are stated here so the arithmetic is auditable.
+UNIT_RATES = {
+    'programme_manager':   {'rate': 120000, 'unit': 'Per year, one post'},
+    'finance_officer':     {'rate':  80000, 'unit': 'Per year, one post'},
+    'mel_officer':         {'rate':  90000, 'unit': 'Per year, one post'},
+    'steering_meeting':    {'rate':  35000, 'unit': 'Per meeting, two a year'},
+    'audit':               {'rate':  25000, 'unit': 'Per year'},
+    'baseline':            {'rate':  60000, 'unit': 'Once, first six months'},
+    'midterm':             {'rate':  90000, 'unit': 'Once, end of year three'},
+    'final_evaluation':    {'rate': 110000, 'unit': 'Once, final year'},
+    'visibility':          {'rate':  20000, 'unit': 'Per year'},
+}
 
 def parse_band(text):
     """Classify a cost entry from the matrix and return (kind, value).
@@ -388,45 +422,177 @@ def money(v):
 def pct(v, total):
     return '{:.0f}%'.format(100.0 * v / total) if total else '-'
 
-def build_budget(pack, invs, states, years):
-    """Direct cost by pillar, then governance, contingency and support costs.
+def recurrent_years(years):
+    """Action-funded share of running cost, summed over the life of the Action."""
+    return sum(RECURRENT_SHARE.get(y, 0.0) for y in range(1, years + 1))
 
-    Set-up is incurred once per adopting Member State for a national instrument and
-    once for the region for a regional one. Running cost is carried for the years
-    inside the Action after the first. Entries that are not sums are excluded from
-    the arithmetic and reported separately so the budget is never quietly short.
+def scope_factor(n_instruments, states):
+    """Management effort scales with what the Action actually carries.
+
+    A single instrument in a few Member States does not need a full regional
+    management establishment, and charging one to it is how administration comes to
+    cost more than the work. The factor is a full-time-equivalent share, floored so a
+    small Action still carries real supervision and capped at one establishment.
     """
-    by_pillar = {}
-    unpriced = []
+    f = 0.15 + 0.06 * n_instruments + 0.03 * states
+    return max(0.20, min(1.00, f))
+
+def build_management(years, factor=1.0):
+    """Direct management and oversight, built from unit rates rather than a percentage.
+
+    United Nations cost-recovery policy requires costs traceable to the programme to
+    be budgeted directly. Deriving a management total from a rate and then splitting
+    it is the reverse of that, and leaves no answer to a reviewer who asks how a post
+    was costed.
+    """
+    R = UNIT_RATES
+    rows = [
+        ('programme_manager', 'Programme management', years),
+        ('finance_officer',   'Financial management and contracting', years),
+        ('steering_meeting',  'Programme Steering Committee', years * 2),
+        ('audit',             'External audit and assurance', years),
+        ('visibility',        'Communication and visibility', years),
+    ]
+    out = []
+    for key, label, qty in rows:
+        v = R[key]['rate'] * qty * factor
+        out.append({'item': label, 'unit': R[key]['unit'],
+                    'rate': money(R[key]['rate']),
+                    'qty': '%s at %.2f full-time equivalent' % (qty, factor) if factor < 1 else str(qty),
+                    'amount': money(v), '_v': v})
+    return out
+
+def build_mel(years, factor=1.0):
+    """Monitoring and evaluation as a costed plan in its own right.
+
+    A budgeted monitoring and evaluation plan is an explicit review criterion for the
+    Adaptation Fund, so it is shown as a line rather than folded into management.
+    """
+    R = UNIT_RATES
+    rows = [
+        ('mel_officer', 'Monitoring officer', 'Continuous monitoring from existing records', 'Throughout', years),
+        ('baseline', 'Baseline', 'Starting position for every indicator in each Member State', 'First six months', 1),
+        ('midterm', 'Mid-term evaluation', 'Whether the pathways are producing the outcomes expected, and whether the assumptions hold', 'End of year three', 1),
+        ('final_evaluation', 'Final evaluation', 'Contribution to the outcomes, and what carries into the successor programme', 'Final year', 1),
+    ]
+    out = []
+    for key, label, covers, when, qty in rows:
+        v = R[key]['rate'] * qty * factor
+        out.append({'item': label, 'covers': covers, 'when': when,
+                    'amount': money(v), '_v': v})
+    return out
+
+def build_budget(pack, invs, states, years, modality):
+    """Direct implementation, direct management, risk provision, indirect support.
+
+    Set-up is charged in full to the first adopting Member State and at the replication
+    rate to each one after it, because what transfers between States is the protocol,
+    the conditions and the evidence rather than the design work. Running cost is funded
+    on the Programme's own sustainability sequence rather than for every year.
+    """
+    rec_years = recurrent_years(years)
+    by_pillar, unpriced = {}, []
     for i in invs:
         p = i.get('pillar') or 'P1'
-        by_pillar.setdefault(p, {'amount': 0.0, 'names': []})
+        by_pillar.setdefault(p, {'amount': 0.0, 'names': [], 'setup': 0.0, 'recurrent': 0.0})
         by_pillar[p]['names'].append(i['name'])
-        amount = 0.0
-        for field, span in (('cost_setup', 1), ('cost_rec', max(years - 1, 1))):
-            kind, val = parse_band(i.get(field))
-            if kind == 'per_state':
-                amount += val * states * span
-            elif kind == 'regional':
-                amount += val * span
-            else:
-                why, req = UNPRICED_REASON[kind]
-                unpriced.append({'inst': i['name'] + (' (set-up)' if field == 'cost_setup' else ' (running cost)'),
-                                 'why': why, 'requirement': req})
-        by_pillar[p]['amount'] += amount
-    direct = sum(v['amount'] for v in by_pillar.values())
-    governance = direct * GOVERNANCE_RATE
-    subtotal = direct + governance
-    contingency = subtotal * CONTINGENCY_RATE
-    before_support = subtotal + contingency
-    support = before_support * SUPPORT_RATE
-    return {'by_pillar': by_pillar, 'unpriced': unpriced, 'direct': direct,
-            'governance': governance, 'subtotal': subtotal, 'contingency': contingency,
-            'support': support, 'total': before_support + support}
+        kind, val = parse_band(i.get('cost_setup'))
+        if kind == 'per_state':
+            setup = val * (1 + (states - 1) * REPLICATION_RATE)
+        elif kind == 'regional':
+            setup = val
+        else:
+            setup = 0.0
+            why, req = UNPRICED_REASON[kind]
+            unpriced.append({'inst': i['name'] + ' (set-up)', 'why': why, 'requirement': req})
+        kind, val = parse_band(i.get('cost_rec'))
+        if kind == 'per_state':
+            recurrent = val * states * rec_years
+        elif kind == 'regional':
+            recurrent = val * rec_years
+        else:
+            recurrent = 0.0
+            why, req = UNPRICED_REASON[kind]
+            unpriced.append({'inst': i['name'] + ' (running cost)', 'why': why, 'requirement': req})
+        by_pillar[p]['setup'] += setup
+        by_pillar[p]['recurrent'] += recurrent
+        by_pillar[p]['amount'] += setup + recurrent
 
-def build_context(pack, numbers, states, years):
+    implementation = sum(v['amount'] for v in by_pillar.values())
+    setup_total = sum(v['setup'] for v in by_pillar.values())
+    recurrent_total = sum(v['recurrent'] for v in by_pillar.values())
+
+    factor = scope_factor(len(invs), states)
+    management_rows = build_management(years, factor)
+    mel_rows = build_mel(years, factor)
+    management = sum(r['_v'] for r in management_rows)
+    mel = sum(r['_v'] for r in mel_rows)
+
+    # Execution costs are held inside the ceiling the climate funds apply: 9.5 per cent
+    # of activities plus execution. Where the scoped requirement exceeds it, the Action
+    # is too small to carry a standalone management establishment and the balance is met
+    # from the Programme's own management. That is reported, not absorbed silently.
+    EXEC_CEILING = 0.095
+    activities_base = implementation * (1 + CONTINGENCY_RATE)
+    allowed = activities_base * EXEC_CEILING / (1 - EXEC_CEILING)
+    scoped = management + mel
+    capped = scoped > allowed
+    if capped and scoped > 0:
+        shrink = allowed / scoped
+        for r in management_rows + mel_rows:
+            r['_v'] *= shrink
+            r['amount'] = money(r['_v'])
+        management *= shrink
+        mel *= shrink
+
+    contingency = implementation * CONTINGENCY_RATE
+    direct_total = implementation + management + mel + contingency
+    mod = MODALITY.get(modality, MODALITY['un'])
+    support = direct_total * mod['rate']
+    total = direct_total + support
+    return {'by_pillar': by_pillar, 'unpriced': unpriced,
+            'implementation': implementation, 'setup': setup_total, 'recurrent': recurrent_total,
+            'management_rows': management_rows, 'mel_rows': mel_rows,
+            'management': management, 'mel': mel, 'contingency': contingency,
+            'direct_total': direct_total, 'support': support, 'total': total,
+            'rec_years': rec_years, 'modality': mod, 'rate': mod['rate'],
+            'factor': factor, 'capped': capped, 'scoped': scoped, 'allowed': allowed}
+
+def build_mapping(B, states):
+    """The same total expressed as the climate funds read a budget.
+
+    They test three components against their own ceilings: activities, execution costs
+    and the implementing entity fee. A budget they cannot map to that shape has to be
+    rebuilt by the reviewer, which is the surest way to lose a week.
+    """
+    activities = B['implementation'] + B['contingency']     # risk provision sits inside activities
+    execution = B['management'] + B['mel']
+    fee = B['support']
+    project_cost = activities + execution                   # the base both ceilings apply to
+    exec_pct = 100.0 * execution / project_cost if project_cost else 0
+    fee_pct = 100.0 * fee / project_cost if project_cost else 0
+    TOL = 0.05          # a ceiling met exactly must not read as breached
+    regional = states > 1
+    fee_cap = 10.0 if regional else 8.5
+    return [
+        {'comp': 'A  Activities', 'contains': 'Direct implementation of the instruments, with the risk provision carried inside activity costs',
+         'amount': money(activities), 'cap': 'No ceiling', 'position': 'n/a'},
+        {'comp': 'B  Execution', 'contains': 'Direct management, oversight, audit, visibility, and the costed monitoring and evaluation plan',
+         'amount': money(execution), 'cap': '9.5 per cent of A plus B',
+         'position': '%.1f per cent — %s' % (exec_pct, 'within' if exec_pct <= 9.5 + TOL else 'ABOVE THE CEILING')},
+        {'comp': 'C  Implementing entity fee', 'contains': 'Indirect cost recovery at the rate of the modality used',
+         'amount': money(fee), 'cap': '%.1f per cent of A plus B (%s project)' % (fee_cap, 'regional' if regional else 'single-country'),
+         'position': '%.1f per cent — %s' % (fee_pct, 'within' if fee_pct <= fee_cap + TOL else 'ABOVE THE CEILING')},
+        {'comp': 'Total', 'contains': 'Amount of funding requested, A plus B plus C',
+         'amount': money(activities + execution + fee), 'cap': 'Administrative cost below 18 per cent of the total',
+         'position': '%.1f per cent — %s' % (exec_pct + fee_pct, 'within' if (exec_pct + fee_pct) <= 18 + TOL else 'ABOVE THE CEILING')},
+    ]
+
+def build_context(pack, numbers, states, years, modality='un', beneficiaries=None, price_year=None, currency='United States dollars'):
     invs = [pack.innovation(n) for n in numbers]
-    B = build_budget(pack, invs, states, years)
+    B = build_budget(pack, invs, states, years, modality)
+    MAP = build_mapping(B, states)
+    price_year = price_year or datetime.date.today().year
     arrangements = sum(1 for i in invs if i.get('type') in ('Non-tech', 'Hybrid'))
 
     # the Action adapts to what it actually carries: one instrument or several,
@@ -496,20 +662,47 @@ def build_context(pack, numbers, states, years):
     for ref, (p, v) in enumerate(sorted(B['by_pillar'].items()), 1):
         direct_rows.append({'ref': 'Output %d' % ref, 'desc': PILLAR_NAME.get(p, p),
                             'unit': 'Per Member State, %d States' % states,
-                            'amount': money(v['amount']), 'share': pct(v['amount'], B['direct'])})
+                            'amount': money(v['amount']), 'share': pct(v['amount'], B['implementation'])})
 
     summary = [
-        {'ref': 'A', 'line': 'Direct costs of implementation', 'amount': money(B['direct']),
-         'note': 'By output at section 7.3'},
-        {'ref': 'B', 'line': 'Governance and administration of the Action', 'amount': money(B['governance']),
-         'note': '%.0f per cent of A' % (GOVERNANCE_RATE * 100)},
-        {'ref': 'C', 'line': 'Subtotal (A + B)', 'amount': money(B['subtotal']), 'note': ''},
-        {'ref': 'D', 'line': 'Contingency reserve', 'amount': money(B['contingency']),
-         'note': '%.0f per cent of C' % (CONTINGENCY_RATE * 100)},
-        {'ref': 'E', 'line': 'Subtotal (C + D)', 'amount': money(B['subtotal'] + B['contingency']), 'note': ''},
-        {'ref': 'F', 'line': 'Programme support costs', 'amount': money(B['support']),
-         'note': '%.0f per cent of E' % (SUPPORT_RATE * 100)},
-        {'ref': 'G', 'line': 'Total estimated cost of the Action', 'amount': money(B['total']), 'note': 'E + F'},
+        {'ref': 'A1', 'line': 'Establishment of the instruments', 'amount': money(B['setup']),
+         'note': 'First adopter at full cost; each later adopter at %.0f per cent' % (REPLICATION_RATE * 100)},
+        {'ref': 'A2', 'line': 'Running cost carried during the transition', 'amount': money(B['recurrent']),
+         'note': 'Full in year one, half in years two and three, none thereafter'},
+        {'ref': 'A', 'line': 'Direct implementation costs', 'amount': money(B['implementation']), 'note': 'A1 + A2'},
+        {'ref': 'B', 'line': 'Direct management and oversight', 'amount': money(B['management']),
+         'note': 'Built from unit rates at section 7.4, not from a percentage'},
+        {'ref': 'C', 'line': 'Monitoring and evaluation', 'amount': money(B['mel']),
+         'note': 'Costed plan at section 7.5'},
+        {'ref': 'D', 'line': 'Risk provision', 'amount': money(B['contingency']),
+         'note': '%.0f per cent of A' % (CONTINGENCY_RATE * 100)},
+        {'ref': 'E', 'line': 'Total direct costs', 'amount': money(B['direct_total']), 'note': 'A + B + C + D'},
+        {'ref': 'F', 'line': 'Indirect cost recovery', 'amount': money(B['support']),
+         'note': '%.1f per cent of E \u2014 %s' % (B['rate'] * 100, B['modality']['label'])},
+        {'ref': 'G', 'line': 'Total estimated cost of the Action', 'amount': money(B['total']),
+         'note': 'E + F. Management, oversight and indirect recovery are %.1f per cent of the total'
+                 % (100.0 * (B['management'] + B['mel'] + B['support']) / B['total'] if B['total'] else 0)},
+    ]
+
+    assumptions = [
+        {'item': 'Cost basis', 'value': 'Midpoint of each band in the cost estimation matrix',
+         'why': 'The matrix bands each instrument against named published comparators. The midpoint is used consistently rather than the floor or the ceiling'},
+        {'item': 'First adopter', 'value': 'Full set-up cost',
+         'why': 'The first Member State carries the design, the arrangement and the protocol'},
+        {'item': 'Each later adopter', 'value': '%.0f per cent of set-up' % (REPLICATION_RATE * 100),
+         'why': 'What transfers between Member States is the protocol, the conditions and the evidence. The design work is not repeated. Legal provision and the accountable post do not transfer and are national acts carrying no Action cost'},
+        {'item': 'Running cost funded by the Action', 'value': 'Year one in full, years two and three at half, nothing after',
+         'why': 'The Programme\u2019s sustainability sequence moves recurrent cost onto national budgets across three phases. Budgeting to carry it for the whole Action would fund a dependency the Programme exists to end'},
+        {'item': 'Regional instruments', 'value': 'Built once, not once per Member State',
+         'why': 'A regional instrument serves all participating States from a single implementation'},
+        {'item': 'Management and oversight', 'value': 'Built from unit rates and scaled to %.2f of a full establishment' % B['factor'],
+         'why': 'Costs traceable to the Action are budgeted directly. Effort scales with the instruments and Member States carried, so a small Action is not charged a full regional establishment'},
+        {'item': 'Execution ceiling', 'value': 'Management and evaluation held within 9.5 per cent of activities plus execution',
+         'why': 'The ceiling the climate funds apply. Where the scoped requirement exceeds it, the Action is too small to carry standalone management and the balance falls to the Programme'},
+        {'item': 'Indirect cost recovery', 'value': '%.1f per cent \u2014 %s' % (B['rate'] * 100, B['modality']['label']),
+         'why': B['modality']['basis'] + '. The rate follows the modality rather than being chosen'},
+        {'item': 'Price year and currency', 'value': '%d prices, %s' % (price_year, currency),
+         'why': 'A multi-year regional budget cannot be adjusted for inflation or compared across submissions without a stated price year'},
     ]
 
     return {
@@ -561,10 +754,10 @@ def build_context(pack, numbers, states, years):
             'needs_intro': 'Sixteen functions exist that no institution in the region reliably performs. Ten concern authority, agreement and accountability rather than equipment. Those most directly addressed by this Action are set out below.',
             'needs': [
                 {'need': 'No designated authority to issue a public warning in several Member States',
-                 'evidence': 'Interview and survey record; legal register of the Draft Programme',
+                 'evidence': 'Interview and survey record; legal register of the Programme',
                  'consequence': 'Warning channels are built that no institution may lawfully use'},
                 {'need': 'No instrument converts a financing decision into a delivery instruction',
-                 'evidence': 'Gap register of the Draft Programme',
+                 'evidence': 'Gap register of the Programme',
                  'consequence': 'Pre-arranged finance arrives without a route to the household'},
                 {'need': 'No obligation on any institution to document what operates',
                  'evidence': 'Gap register; absence of a regional record',
@@ -719,33 +912,61 @@ def build_context(pack, numbers, states, years):
             'total_action': money(B['total']),
             'requested': money(B['total']) + ' (co-financing to be confirmed at section 7.8)',
             'cofinancing': 'Member State contributions in kind through staff time, existing structures and the recurrent budget lines created during the Action',
-            'basis': ('Costs are necessary for the Action, reasonable, verifiable and incurred during implementation. Direct costs are built from '
+            'basis': ('Costs are necessary for the Action, reasonable, verifiable and incurred during implementation. Costs traceable to the '
+                      'Action are budgeted directly and built from unit rates; only costs that cannot be traced are recovered through an indirect '
+                      'rate, which follows the modality used rather than being chosen. Implementation costs are built from '
                       'the Programme cost estimation matrix, which bands every instrument against named published comparators. Those bands are '
                       'indicative: they support appraisal and budgeting and are replaced by nationally priced figures before financial close. '
                       'Governance, contingency and support costs are shown as separate lines so that a funding partner may apply its own ceilings '
                       'without reworking the direct costs.'),
             'direct': direct_rows,
             'by_output': [{'ref': r['ref'], 'desc': r['desc'], 'amount': r['amount'], 'share': r['share']} for r in direct_rows],
-            'governance_note': ('Governance and administration are budgeted at %.0f per cent of direct costs. They are shown explicitly rather than '
-                                'absorbed, because the Action is regional and its oversight is the mechanism by which a funding partner\u2019s '
-                                'contribution is controlled.' % (GOVERNANCE_RATE * 100)),
-            'governance': [
-                {'item': 'Programme management', 'covers': 'Action management within the Disaster Risk Reduction Unit: planning, contracting, supervision and reporting',
-                 'amount': money(B['governance'] * 0.45)},
-                {'item': 'Steering Committee and oversight', 'covers': 'Meetings of the Programme Steering Committee, Member State focal point coordination and Board reporting',
-                 'amount': money(B['governance'] * 0.20)},
-                {'item': 'Monitoring, evaluation and learning', 'covers': 'Baseline, mid-term and final evaluation, and the monitoring system',
-                 'amount': money(B['governance'] * 0.20)},
-                {'item': 'Audit and assurance', 'covers': 'External audit and verification of expenditure',
-                 'amount': money(B['governance'] * 0.15)},
-            ],
-            'contingency_note': ('A contingency reserve of %.0f per cent of direct and governance costs is included, equal to %s. It covers currency '
+            'contingency_note': ('A risk provision of %.0f per cent of direct implementation costs is included, equal to %s. It covers currency '
                                  'movement, inflation in national markets, and the replacement of indicative bands with nationally priced figures. '
                                  'It is released only on the written authority of the Disaster Risk Reduction Unit and is reported on separately. '
-                                 'Where a funding partner caps a contingency reserve below this level, the balance is carried as a separately '
-                                 'justified risk provision inside direct costs, and the Unit will present it that way on request.'
+                                 'It is presented inside activity costs at section 7.9, which is where the climate funds expect to find provision '
+                                 'of this kind, and separately here so that a partner applying a lower ceiling on a contingency line can see '
+                                 'immediately what is affected and what justifies it.'
                                  % (CONTINGENCY_RATE * 100, money(B['contingency']))),
             'summary': summary,
+            'assumptions': assumptions,
+            'mapping': MAP,
+            'mapping_note': ('The same total, expressed as the climate funds read a budget: activities, execution costs and the '
+                             'implementing entity fee, each tested against its own ceiling. The risk provision is carried inside '
+                             'activity costs, which is where these funds expect to find it. Nothing changes but the presentation.'),
+            'management': B['management_rows'],
+            'management_note': (('Management and oversight are budgeted directly from unit rates rather than taken as a percentage '
+                                 'of the work, and the establishment is scaled to what this Action carries: %.2f of a full-time '
+                                 'equivalent across the management posts. The rates are indicative and are replaced by the '
+                                 'institution\u2019s own before submission; they are stated so the arithmetic can be audited.'
+                                 % B['factor']) +
+                                (' The requirement scoped from those rates is %s, which exceeds the %s that the execution ceiling '
+                                 'allows for an Action of this size. The budget is held at the ceiling and the balance is met from '
+                                 'the Programme\u2019s own management, which is the honest reading: an Action this small does not '
+                                 'carry a standalone management establishment and is delivered inside the Programme.'
+                                 % (money(B['scoped']), money(B['allowed']))) if B['capped'] else ''),
+            'mel': B['mel_rows'],
+            'mel_note': ('Monitoring and evaluation is shown as a costed plan in its own right rather than folded into management, '
+                         'because a budgeted plan is a review criterion in its own right. Monitoring reads from records that already '
+                         'exist; the three evaluation points are costed separately.'),
+            'direct_note': ('Establishment accounts for %s of direct implementation and running cost during the transition for %s. '
+                            'The Action does not budget to carry running cost beyond the transition.'
+                            % (money(B['setup']), money(B['recurrent']))),
+            'unit_cost': (('Cost per person reached is %s over the life of the Action, against %s people. The Programme holds the '
+                           'comparator that makes this figure meaningful: a community evacuation centre in Malawi was costed at about '
+                           'five United States dollars for each person covered.'
+                           % ('USD {:,.2f}'.format(B['total'] / beneficiaries), '{:,.0f}'.format(beneficiaries)))
+                          if beneficiaries else
+                          ('Cost per person reached is calculated once the number of people to be reached is confirmed from national '
+                           'exposure data. The Programme holds the comparator that makes the figure meaningful: a community evacuation '
+                           'centre in Malawi was costed at about five United States dollars for each person covered.')),
+            'method_note': ('The budget is built from the cost estimation matrix under the assumptions below. Two of them '
+                            'matter more than the rest. Replication is cheaper than first implementation, so only the first '
+                            'adopting Member State carries the full establishment cost. And the Action funds running cost '
+                            'only through the transition to national budgets, not for its whole life, because carrying it '
+                            'throughout would finance the dependency the Programme is designed to remove. Together these '
+                            'two assumptions reduce the ask substantially against a model that charges every State full '
+                            'price for every year.'),
             'unpriced_note': unpriced_note,
             'unpriced': B['unpriced'],
             'vfm': ('Three features carry the value-for-money case. The Action extends instruments that already operate rather than financing '
@@ -768,7 +989,7 @@ def build_context(pack, numbers, states, years):
             {'n': '1', 'name': 'Logical framework matrix', 'status': 'At section 3.5; supplied separately in the funding partner\u2019s format on request'},
             {'n': '2', 'name': 'Detailed budget', 'status': 'Supplied in the funding partner\u2019s format; indicative pending national pricing'},
             {'n': '3', 'name': 'Innovation Landscape Assessment', 'status': 'Available'},
-            {'n': '4', 'name': 'Draft Programme and annexes, including the gap and legal registers', 'status': 'Available'},
+            {'n': '4', 'name': 'Programme and annexes, including the gap and legal registers', 'status': 'Available'},
             {'n': '5', 'name': 'Cost estimation matrix', 'status': 'Available; internal, supplied on request to the funding partner only'},
             {'n': '6', 'name': 'Inclusion determinations', 'status': 'Available'},
             {'n': '7', 'name': 'Member State adoption plans', 'status': 'Prepared per Member State on confirmation of participation'},
@@ -791,8 +1012,15 @@ if __name__ == '__main__':
                     help='comma-separated portfolio numbers carried by the Action')
     ap.add_argument('--states', type=int, default=8, help='Member States adopting')
     ap.add_argument('--years', type=int, default=5, help='duration of the Action in years')
+    ap.add_argument('--modality', default='un',
+                    choices=sorted(MODALITY), help='sets the indirect cost recovery rate')
+    ap.add_argument('--beneficiaries', type=int, default=None,
+                    help='people reached, to compute cost per person')
+    ap.add_argument('--price-year', type=int, default=None, dest='price_year')
+    ap.add_argument('--currency', default='United States dollars')
     ap.add_argument('--out', default='T10_Funding_Proposal.docx')
     a = ap.parse_args()
     nums = [int(x) for x in a.innovations.split(',') if x.strip()]
     pack = DataPack(a.pack)
-    render(a.template, build_context(pack, nums, a.states, a.years), a.out)
+    render(a.template, build_context(pack, nums, a.states, a.years, a.modality,
+                                     a.beneficiaries, a.price_year, a.currency), a.out)
