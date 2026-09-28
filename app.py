@@ -760,8 +760,8 @@ def show_product_readiness_callout(matrix, key_prefix="readiness"):
             st.info("Completing this checklist prepares the product for verification. The analyst must close the fact in the governed matrix; the Readiness Board then updates the final submission status.")
 
 
-def show_submission_ready_report(matrix, profile=None):
-    """Show the product hub first; keep programme narrative in collapsed panels."""
+def show_submission_ready_report(matrix, profile=None, product_scope="all"):
+    """Show the selected controlled product scope with supporting content collapsed."""
     portfolio = table(matrix, "06_Portfolio")
     board = readiness_board(matrix)
     facts = table(matrix, "40_Outstanding_Facts")
@@ -778,16 +778,20 @@ def show_submission_ready_report(matrix, profile=None):
     selected_innovation = profile_value(profile or {}, "innovation_name", "name")
     selected_record = selected_innovation_record(matrix, profile or {})
 
-    # Compact product controls sit immediately above the visual hub.
-    product_tabs = st.tabs(["P1a and P1b — Programme documents", "Other products — P2 to P9"])
-    with product_tabs[0]:
-        show_submission_product_buttons(matrix, profile or {}, ["P1a", "P1b"], selected_innovation)
-    with product_tabs[1]:
-        show_submission_product_buttons(
-            matrix, profile or {},
-            [code for code in SUBMISSION_PRODUCT_TEMPLATES if code not in REGIONAL_PRODUCTS],
-            selected_innovation,
-        )
+    # Each public tab has one unambiguous product scope, so there are no
+    # extra lower selectors competing with the main navigation.
+    programme_codes = ["P1a", "P1b"]
+    individual_codes = [code for code in SUBMISSION_PRODUCT_TEMPLATES if code not in programme_codes]
+    if product_scope == "programme":
+        show_submission_product_buttons(matrix, profile or {}, programme_codes, selected_innovation)
+    elif product_scope == "individual":
+        show_submission_product_buttons(matrix, profile or {}, individual_codes, selected_innovation)
+    else:
+        product_tabs = st.tabs(["P1a and P1b — Programme documents", "Other products — P2 to P9"])
+        with product_tabs[0]:
+            show_submission_product_buttons(matrix, profile or {}, programme_codes, selected_innovation)
+        with product_tabs[1]:
+            show_submission_product_buttons(matrix, profile or {}, individual_codes, selected_innovation)
 
     # Everything before and after the hub remains available, but does not
     # interrupt the visual workflow requested for the landing view.
@@ -2017,10 +2021,10 @@ tab_data, tab_documents, tab_funding = st.tabs([
 ])
 
 with tab_data:
-    render_workspace("Programme command")
+    show_submission_ready_report(matrix, profile, product_scope="programme")
 
 with tab_documents:
-    show_submission_ready_report(matrix, profile)
+    show_submission_ready_report(matrix, profile, product_scope="individual")
 
 with tab_funding:
     show_funding_proposal_workspace(matrix, profile)
