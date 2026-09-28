@@ -55,7 +55,7 @@ SUBMISSION_PRODUCT_TEMPLATES = {
 }
 SUBMISSION_PRODUCT_TEMPLATE_ARCHIVE = Path(__file__).parent / "Submission_Product_Templates.zip.b64"
 TEMPLATE_POPULATION_KIT = Path(__file__).parent / "SADC_Template_Population_Kit.zip.b64"
-REGIONAL_PRODUCTS = set()
+REGIONAL_PRODUCTS = {"P1a", "P1b", "P4", "P6"}
 SADC_HEADER_IMAGE = Path(__file__).parent / "SADC_Head_New.png"
 SADC_FOOTER_IMAGE = Path(__file__).parent / "SADC_Foot_New.png"
 SADC_HEADER_ASPECT = 290 / 2048
