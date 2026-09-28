@@ -1794,15 +1794,36 @@ def on_innovation_change():
         st.session_state.pop(key, None)
 
 st.session_state.setdefault("show_add_innovation", False)
+st.markdown(
+    """
+    <style>
+      .arc-platform-title {
+        color: #07366e; text-align: center; font-weight: 800;
+        font-size: 2rem; margin: .35rem 0 1.1rem;
+      }
+      .st-key-innovation_selector label {
+        color: #0070c0 !important; font-weight: 800 !important;
+        font-size: 1.08rem !important;
+      }
+      .st-key-innovation_selector [data-baseweb="select"] > div {
+        border: 2px solid #0070c0 !important;
+        border-radius: 9px !important;
+        box-shadow: none !important;
+      }
+    </style>
+    <div class="arc-platform-title">Innovation Digital Platform</div>
+    """,
+    unsafe_allow_html=True,
+)
 choice_col, add_col = st.columns([3, 1], gap="large")
 with choice_col:
     selected_name = st.selectbox(
-        "Choose your innovation", names, key="innovation_selector",
+        "Choose your Innovation", names, key="innovation_selector",
         on_change=on_innovation_change,
     )
 with add_col:
-    st.markdown("#### Add an innovation")
-    if st.button("Add innovation", use_container_width=True, type="primary"):
+    st.markdown("#### Add an Innovation")
+    if st.button("Add Innovation", use_container_width=True, type="primary"):
         st.session_state.show_add_innovation = True
 
 saved = next((entry for entry in shared if entry["innovation_name"] == selected_name), {})
@@ -1979,38 +2000,21 @@ def render_workspace(workspace):
     else:
         show_funding_proposal_workspace(matrix, profile)
 
-# The landing view deliberately shows only the current programme picture,
-# innovation controls, ready products and the standalone funding-proposal entry.
-# Detailed management work remains available from the collapsed sidebar.
-admin_options = [
-    "Home",
-    "Product readiness",
-    "Funding proposal",
-    "Programme command",
-    "Workstream C — portfolio admission",
-    "Workstream D — innovation delivery",
-    "Research and verification",
-]
-st.session_state.setdefault("admin_workspace", "Home")
-with st.sidebar:
-    st.divider()
-    st.selectbox("Programme administration", admin_options, key="admin_workspace")
+# The public workspace deliberately exposes only the programme data,
+# document hub and funding proposal. Detailed administration remains in code
+# but is not presented as a competing selector to programme users.
+tab_data, tab_documents, tab_funding = st.tabs([
+    "Innovation Program Data",
+    "Individual Documentation Hub",
+    "Individual Funding Proposal",
+])
 
-def open_funding_proposal_workspace():
-    st.session_state.admin_workspace = "Funding proposal"
+with tab_data:
+    render_workspace("Programme command")
 
-if st.session_state.admin_workspace == "Home":
-    st.markdown("### Programme P1a / P1b")
+with tab_documents:
     show_submission_ready_report(matrix, profile)
 
-    with st.container(border=True):
-        st.subheader("Funding proposal")
-        st.write("Compile the current innovation into the controlled funder-facing proposal.")
-        st.button(
-            "Open funding-proposal workspace",
-            key="open_funding_proposal",
-            type="primary",
-            on_click=open_funding_proposal_workspace,
-        )
-else:
-    render_workspace(st.session_state.admin_workspace)
+with tab_funding:
+    show_funding_proposal_workspace(matrix, profile)
+
