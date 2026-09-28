@@ -907,10 +907,16 @@ def show_submission_product_hub(matrix, profile, product_codes, selected_innovat
     if not left_codes and not centre_codes:
         left_codes, right_codes = product_codes[::2], product_codes[1::2]
 
+    is_programme_only = set(product_codes).issubset({"P1a", "P1b"})
+    hub_note = (
+        "P1a and P1b are programme-wide. Preview or download a product lane."
+        if is_programme_only
+        else "Choose an innovation above. Preview or download any product lane."
+    )
     left, centre, right = st.columns([4.7, 2.3, 4.7], gap="medium")
     with centre:
         st.markdown('<div class="arc-hub-core">SADC<br>Innovations<br>Programme</div>', unsafe_allow_html=True)
-        st.markdown('<div class="arc-hub-note">Choose an innovation above. Preview or download any product lane.</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="arc-hub-note">{hub_note}</div>', unsafe_allow_html=True)
 
     def product_lane(column, product_code):
         colour, icon, title, number = PRODUCT_HUB_META.get(
