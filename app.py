@@ -1729,8 +1729,8 @@ def build_funding_proposal_docx(matrix, profile, proposal):
 
 def build_t10_transversal_funding_proposal(matrix, profile):
     """Populate the supplied T10 template from the selected governed innovation."""
-    if not T10_TRANSVERSAL_FUNDING_TEMPLATE.exists():
-        raise FileNotFoundError("The supplied T10 Transversal Funding Proposal template is not available.")
+    if not all(path.exists() for path in T10_TRANSVERSAL_FUNDING_TEMPLATE_PARTS):
+        raise FileNotFoundError("The packaged T10 Transversal Funding Proposal template is not available.")
 
     name = clean(profile.get("innovation_name")) or "Selected innovation"
     def value(field, item, action):
