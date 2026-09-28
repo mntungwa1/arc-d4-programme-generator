@@ -33,7 +33,7 @@ BOOK = Path(__file__).parent / "ARC_D4_Automation_Matrix.b64"
 SADC_PROPOSAL_TEMPLATE = Path(__file__).parent / "SADC_Proposal_Template.b64"
 SADC_PROPOSAL_TEMPLATE_PARTS = [
     Path(__file__).parent / f"SADC_Proposal_Template.part{number:02d}"
-    for number in range(1, 5)
+    for number in range(1, 6)
 ]
 # Final SADC template pack supplied with the revised programme and population code.
 # It is split only for reliable source-control transfer; it is reassembled in memory.
