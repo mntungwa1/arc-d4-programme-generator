@@ -1820,21 +1820,19 @@ def build_t10_transversal_funding_proposal(matrix, profile):
         "annexes": [{"n": "1", "name": "Selected innovation profile and evidence record", "status": "Available from the governed platform"}, {"n": "2", "name": "ARC D4 programme outputs and delivery pathway", "status": "Available from the governed platform"}, {"n": "3", "name": "Cost analysis and national pricing basis", "status": "To be completed or confirmed"}],
         "decl": {"text": "This proposal is generated from the controlled innovation record. It must be reviewed and approved by the accountable institution before external submission.", "prepared_by": "Academy of Resilience and Continuity", "approved_by": proposal_placeholder("Approving authority", "Insert the authorised institutional approver before submission.")},
     }
-    with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as source:
-        source.write(T10_TRANSVERSAL_FUNDING_TEMPLATE.read_bytes())
-        source_path = Path(source.name)
-    try:
-        template = DocxTemplate(str(source_path))
-        template.render(context, autoescape=True)
-        rendered = BytesIO()
-        template.save(rendered)
-        document = Document(BytesIO(rendered.getvalue()))
-        colour_completion_placeholders(document)
-        output = BytesIO()
-        document.save(output)
-        return output.getvalue()
-    finally:
-        source_path.unlink(missing_ok=True)
+    # Render directly from the controlled repository template.  A temporary
+    # source file can disappear while docxtpl resolves embedded assets, which
+    # prevents the proposal controls from appearing after the main button is
+    # pressed.
+    template = DocxTemplate(str(T10_TRANSVERSAL_FUNDING_TEMPLATE))
+    template.render(context, autoescape=True)
+    rendered = BytesIO()
+    template.save(rendered)
+    document = Document(BytesIO(rendered.getvalue()))
+    colour_completion_placeholders(document)
+    output = BytesIO()
+    document.save(output)
+    return output.getvalue()
 
 
 def show_t10_funding_proposal_workspace(matrix, profile):
