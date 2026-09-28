@@ -975,10 +975,16 @@ def sadc_proposal_document():
         encoded = re.sub(r"\s+", "", encoded)
         encoded += "=" * (-len(encoded) % 4)
         document = Document(BytesIO(base64.b64decode(encoded)))
-        body = document._element.body
-        for child in list(body):
-            if child.tag != qn("w:sectPr"):
-                body.remove(child)
+        # Some supplied T10 files carry header/footer layout but omit the
+        # standard Word body styles. Use a fully styled document in that case
+        # so P9 remains compilable instead of failing before its controls load.
+        if "Normal" not in [style.name for style in document.styles]:
+            document = Document()
+        else:
+            body = document._element.body
+            for child in list(body):
+                if child.tag != qn("w:sectPr"):
+                    body.remove(child)
     else:
         document = Document()
     for section in document.sections:
