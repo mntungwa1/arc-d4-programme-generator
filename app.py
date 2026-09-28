@@ -1391,9 +1391,10 @@ def p1a_submission_preview_pdf():
     ]
     if len(encoded_parts) != len(P1A_SUBMISSION_PREVIEW_PARTS):
         raise FileNotFoundError("The approved P1a preview is not yet available.")
-    encoded = re.sub(r"\s+", "", "".join(encoded_parts))
-    encoded += "=" * (-len(encoded) % 4)
-    return base64.b64decode(encoded)
+    return b"".join(
+        base64.b64decode(re.sub(r"\s+", "", encoded) + "=" * (-len(re.sub(r"\s+", "", encoded)) % 4))
+        for encoded in encoded_parts
+    )
 
 def build_filled_submission_product_docx(matrix, profile, product_code):
     """Use the supplied data-driven routine to create a fully populated product."""
