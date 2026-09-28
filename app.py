@@ -56,6 +56,10 @@ P1B_SUMMARY_BRIEF_PARTS = [
     Path(__file__).parent / f"P1b_Summary_Brief.part{number:02d}"
     for number in range(1, 13)
 ]
+T5_SUMMARY_BRIEF_FINAL_PARTS = [
+    Path(__file__).parent / f"T5_Summary_Brief_Final.part{number:02d}"
+    for number in range(1, 7)
+]
 T10_TRANSVERSAL_FUNDING_TEMPLATE = Path(__file__).parent / "T10_Transversal_Funding_Proposal.docx"
 T10_TRANSVERSAL_FUNDING_TEMPLATE_PARTS = [
     Path(__file__).parent / f"T10_Transversal_Funding_Proposal.part{number:02d}"
@@ -1419,6 +1423,15 @@ def p1b_summary_brief_docx():
     encoded += "=" * (-len(encoded) % 4)
     return base64.b64decode(encoded)
 
+def corrected_t5_template_docx():
+    """Reassemble the corrected final T5 template."""
+    encoded_parts = [part.read_text(encoding="utf-8") for part in T5_SUMMARY_BRIEF_FINAL_PARTS if part.exists()]
+    if len(encoded_parts) != len(T5_SUMMARY_BRIEF_FINAL_PARTS):
+        raise FileNotFoundError("The corrected T5 summary-brief template is not available.")
+    encoded = re.sub(r"\s+", "", "".join(encoded_parts))
+    encoded += "=" * (-len(encoded) % 4)
+    return base64.b64decode(encoded)
+
 def build_filled_submission_product_docx(matrix, profile, product_code):
     """Use the supplied data-driven routine to create a fully populated product."""
     if product_code == "P1a":
@@ -1442,6 +1455,10 @@ def build_filled_submission_product_docx(matrix, profile, product_code):
             "funding_rationale": "",
         })
     files = template_population_kit_files()
+    if product_code == "P4":
+        # Corrected final T5 template and its supplied population code.
+        files["T5_Summary_Brief.docx"] = corrected_t5_template_docx()
+        files["T5_Summary_Brief_Final_populate.txt"] = inspect.getsource(t5_population).encode("utf-8")
     product_name, template_name = SUBMISSION_PRODUCT_TEMPLATES[product_code]
     script_name = f"T{product_code[1:]}_{product_name.replace(' ', '_').replace('-', '_')}_populate.txt"
     # The supplied filenames use the exact names below; this explicit mapping
@@ -1451,7 +1468,7 @@ def build_filled_submission_product_docx(matrix, profile, product_code):
         "P1b": "T5_Summary_Brief_populate.txt",
         "P2": "T2_Project_Concept_Note_populate.txt",
         "P3": "T3_Implementation_Plan_populate.txt",
-        "P4": "T5_Summary_Brief_populate.txt",
+        "P4": "T5_Summary_Brief_Final_populate.txt",
         "P5": "T6_Member_State_Adoption_Plan_populate.txt",
         "P6": "T7_Public_Warning_Communication_Plan_populate.txt",
         "P7": "T8_Terms_of_Reference_populate.txt",
