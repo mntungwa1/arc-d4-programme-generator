@@ -1401,7 +1401,7 @@ def render_submission_product_preview_pdf(docx_content):
 
 @st.cache_data(show_spinner=False)
 def p1a_submission_preview_pdf():
-    """Return the faithful rendered PDF of the controlled P1a source."""
+    """Return the faithful rendered PDF of the controlled P1a final source. Cache version 2."""
     encoded_parts = [
         part.read_text(encoding="utf-8")
         for part in P1A_SUBMISSION_PREVIEW_PARTS
