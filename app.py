@@ -43,6 +43,7 @@ SADC_TEMPLATE_PACK_PARTS = [
 ]
 # Controlled source approved for P1a submission. This is never rewritten by automation.
 FINAL_P1A_SUBMISSION_DOCUMENT = Path(__file__).parent / "Final_SADC_DRM_Innovation_Programme_Reviewed.docx"
+T10_TRANSVERSAL_FUNDING_TEMPLATE = Path(__file__).parent / "T10_Transversal_Funding_Proposal.docx"
 SUBMISSION_PRODUCT_TEMPLATES = {
     "P1a": ("Regional Programme Document", "T1_Regional_Programme_Document.docx"),
     "P1b": ("Programme Summary Brief", "T5_Summary_Brief.docx"),
@@ -1722,6 +1723,127 @@ def build_funding_proposal_docx(matrix, profile, proposal):
     return buffer.getvalue()
 
 
+def build_t10_transversal_funding_proposal(matrix, profile):
+    """Populate the supplied T10 template from the selected governed innovation."""
+    if not T10_TRANSVERSAL_FUNDING_TEMPLATE.exists():
+        raise FileNotFoundError("The supplied T10 Transversal Funding Proposal template is not available.")
+
+    name = clean(profile.get("innovation_name")) or "Selected innovation"
+    def value(field, item, action):
+        return proposal_value(profile.get(field), item, action)
+
+    outputs = proposal_outputs(matrix)
+    total = proposal_cost_range(
+        profile.get("cost_setup_low"), profile.get("cost_setup_high"),
+        "Total action cost", "Confirm the costed action budget using Annex R.1 and national pricing.",
+    )
+    recurrent = proposal_cost_range(
+        profile.get("cost_recurrent_low"), profile.get("cost_recurrent_high"),
+        "Recurrent cost", "Confirm the recurrent operating cost, budget line and accountable custodian.",
+    )
+    output_rows = outputs or [{"id": "ARC D4", "name": "Governed delivery package", "purpose": "Provide the controlled programme evidence and implementation package."}]
+    context = {
+        "date": datetime.now(timezone.utc).strftime("%d %B %Y"),
+        "act": {
+            "title": f"{name} Funding Proposal",
+            "subtitle": "Transversal Action under the SADC Regional DRM Innovation Programme",
+            "summary": clean(profile.get("description")) or proposal_placeholder("Innovation description", "Describe the solution, intended users, DRM function and evidence of need."),
+            "applicant": value("lead_institution", "Applicant institution", "Name the accountable institution and confirm its mandate."),
+            "coapplicants": value("delivery_counterpart", "Co-applicants and delivery counterparts", "Name the implementing partners and their delivery roles."),
+            "modality": value("mandate_level", "Implementation modality", "Confirm the regional, national or last-mile operating modality."),
+            "coverage": value("coverage", "Geographic coverage", "State the participating Member States, target areas and beneficiary coverage."),
+            "duration": value("implementation_period", "Implementation duration", "Confirm the delivery period and milestone dates."),
+            "sector": "Disaster risk management innovation and resilience",
+            "sdgs": "SDG 1, SDG 11, SDG 13 and SDG 17",
+            "sendai": "Sendai Framework priorities for understanding risk, governance, investment and preparedness",
+            "reference": value("innovation_url", "Evidence or innovation reference", "Provide the authoritative technical or evidence source."),
+            "target_groups": "SADC institutions, Member State DRM authorities and delivery partners",
+            "final_beneficiaries": "Communities and institutions exposed to disaster risk",
+            "reach": proposal_placeholder("Beneficiary reach", "Confirm the quantified direct and indirect beneficiary estimate."),
+            "beneficiary_note": "The Action will strengthen accountable DRM institutions and improve the usability of risk-reduction and preparedness measures for affected communities.",
+        },
+        "rel": {
+            "context": clean(profile.get("description")) or proposal_placeholder("Context and problem analysis", "Provide the evidence-led DRM problem statement and baseline."),
+            "needs_intro": "The following needs and constraints are drawn from the selected innovation profile and the governed D2/D3 delivery pathway.",
+            "transversal": "The Action is transversal because it connects evidence, delivery institutions, financing, safeguards, learning and adoption arrangements across the regional innovation programme.",
+            "complementarity": "Implementation will align with existing SADC, Member State and partner programmes; duplication is avoided through accountable institutions, shared reporting and the governed product register.",
+            "needs": [{"need": "Investment-ready delivery arrangements", "evidence": value("lead_institution", "Institutional evidence", "Name the accountable institution."), "consequence": "Implementation cannot proceed to financing commitment without confirmed ownership."}],
+            "alignment": [{"name": "SADC DRM and resilience priorities", "how": "The Action strengthens evidence-led innovation, institutional capacity, preparedness and resilient development."}, {"name": "Sendai Framework", "how": "The Action supports risk understanding, governance, investment and preparedness."}],
+        },
+        "logic": {
+            "overall": "Strengthen disaster resilience through accountable, evidence-led innovation delivery.",
+            "specific": f"Operationalise {name} through a costed, governed and sustainable implementation pathway.",
+            "outputs_short": "; ".join(str(row.get("name") or row.get("id")) for row in output_rows[:4]),
+            "toc": "If the governed innovation is financed, delivered through accountable institutions and supported by recurrent-cost arrangements, it can contribute to sustained DRM outcomes.",
+            "outputs": [{"ref": str(row.get("id") or "Output"), "statement": str(row.get("name") or "Governed output"), "activities": str(row.get("purpose") or "Prepare, deliver, monitor and hand over the output.")} for row in output_rows],
+            "matrix": [{"level": "Outcome", "result": "Innovation operationalised through an accountable delivery pathway", "indicator": "Delivery milestones achieved and evidence recorded", "verification": "Governed programme records and implementation reports", "assumption": "Institutions maintain the agreed delivery and financing commitments"}],
+        },
+        "incl": {"rows": [{"group": "Women, persons with disabilities and marginalised groups", "provision": "Inclusion and safeguarding are required in the delivery pathway", "action": "Confirm accessible participation, safeguarding and feedback arrangements before implementation."}]},
+        "impl": {
+            "modality": value("mandate_level", "Implementation modality", "Confirm the operating mandate and delivery authority."),
+            "partners": [{"partner": value("lead_institution", "Lead institution", "Name the accountable institution."), "role": "Accountable lead and governance", "basis": "Governed innovation profile"}, {"partner": value("delivery_counterpart", "Delivery counterpart", "Name the delivery partner."), "role": "Implementation support", "basis": "Delivery arrangement to be confirmed"}],
+            "workplan": [{"period": "Inception", "focus": "Confirm governance, scope, costing and safeguards", "outputs": "Mobilisation and delivery plan", "milestone": "Approved inception record"}, {"period": "Implementation", "focus": "Deliver the governed innovation outputs", "outputs": "; ".join(str(row.get("id")) for row in output_rows), "milestone": "Milestone evidence accepted"}],
+            "monitoring": [{"level": "Output and outcome", "what": "Delivery milestones, results, safeguards and recurrent-cost transition", "by": "Accountable institution and delivery counterpart", "freq": "Quarterly"}],
+            "mel": "Monitoring, evaluation, reporting and learning will use the governed output register, milestone evidence, risk log and periodic delivery reporting.",
+            "risks": [{"risk": "Institutional or financing decision is delayed", "rating": "Medium", "owner": value("lead_institution", "Risk owner", "Name the accountable institution."), "mitigation": "Confirm decision rights, financing route and escalation path at inception."}],
+        },
+        "cross": {"intro": "The Action will apply inclusion, safeguardintro": "Sustainability is designed through accountable institutional ownership, recurrent-cost transition, capacity transfer and documented handover.", "institutional": value("lead_institution", "Institutional sustainability", "Confirm the accountable institution, mandate and decision rights."), "financial": value("recurrent_cost_custodian", "Financial sustainability", "Confirm the recurrent-cost custodian and budget line."), "exit": "Capacity transfer, documented handover, evidence retention and a recurrent-cost transition review will precede programme exit.", "transition": [{"phase": "Implementation", "who": value("delivery_counterpart", "Delivery counterpart", "Name the implementing organisation."), "condition": "Milestone evidence and accountable handover arrangements are accepted."}, {"phase": "Sustained operation", "who": value("recurrent_cost_custodian", "Recurrent-cost custodian", "Name the responsible budget holder."), "condition": "A confirmed budget and institutional operating arrangement is in place."}]},
+        "budget": {
+            "total_action": total, "requested": total, "cofinancing": proposal_placeholder("Co-financing", "Confirm cash and in-kind contributions with the participating institutions."),
+            "basis": value("cost_basis", "Cost basis", "Attach the Annex R.1 comparator or nationally priced basis."),
+            "direct": [{"ref": "1", "desc": "Implementation and delivery", "unit": "Costed delivery package", "amount": total, "share": "To be confirmed"}, {"ref": "2", "desc": "Recurrent operation and sustainability", "unit": "Annual operating requirement", "amount": recurrent, "share": "To be confirmed"}],
+            "by_output": [{"ref": str(row.get("id") or "Output"), "desc": str(row.get("name") or "Governed output"), "amount": "To be costed", "share": "To be confirmed"} for row in output_rows],
+            "governance": [{"item": "Programme governance and reporting", "covers": "Accountable coordination, assurance and reporting", "amount": "To be costed"}],
+            "governance_note": "Governance costs will be confirmed against the approved delivery structure and funder rules.",
+            "contingency_note": "A contingency provision, if allowed by the funder, will be confirmed after national pricing and risk review.",
+            "summary": [{"ref": "A", "line": "Direct implementation and delivery", "amount": total, "note": "Indicative until national pricing is attached"}, {"ref": "B", "line": "Recurrent operation and transition", "amount": recurrent, "note": "Confirm custodian and budget line"}],
+            "cofin": [{"source": value("lead_institution", "Institutional contribution", "Confirm the institutional contribution."), "nature": "Institutional, staffing or in-kind contribution", "value": "To be confirmed"}],
+            "vfm": value("cost_rationale", "Value for money rationale", "Explain efficiency, effectiveness, sustainability and cost-benefit basis."),
+        },
+        "vis": {"text": "Communication and visibility will recognise the funding partner and SADC programme in accordance with approved visibility requirements, safeguarding obligations and institutional protocols."},
+        "annexes": [{"n": "1", "name": "Selected innovation profile and evidence record", "status": "Available from the governed platform"}, {"n": "2", "name": "ARC D4 programme outputs and delivery pathway", "status": "Available from the governed platform"}, {"n": "3", "name": "Cost analysis and national pricing basis", "status": "To be completed or confirmed"}],
+        "decl": {"text": "This proposal is generated from the controlled innovation record. It must be reviewed and approved by the accountable institution before external submission.", "prepared_by": "Academy of Resilience and Continuity", "approved_by": proposal_placeholder("Approving authority", "Insert the authorised institutional approver before submission.")},
+    }
+    with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as source:
+        source.write(T10_TRANSVERSAL_FUNDING_TEMPLATE.read_bytes())
+        source_path = Path(source.name)
+    try:
+        template = DocxTemplate(str(source_path))
+        template.render(context, autoescape=True)
+        rendered = BytesIO()
+        template.save(rendered)
+        document = Document(BytesIO(rendered.getvalue()))
+        colour_completion_placeholders(document)
+        output = BytesIO()
+        document.save(output)
+        return output.getvalue()
+    finally:
+        source_path.unlink(missing_ok=True)
+
+
+def show_t10_funding_proposal_workspace(matrix, profile):
+    """One-click, innovation-specific T10 funding proposal workspace."""
+    name = clean(profile.get("innovation_name")) or "Selected Innovation"
+    st.subheader("Individual Funding Proposal")
+    st.caption("The proposal is populated from the selected innovation and the governed ARC D4 record using the supplied T10 Transversal Funding Proposal template.")
+    request_key = f"t10_proposal_requested_{name}"
+    if st.button(f"{name} Funding Proposal", key=f"t10_proposal_button_{name}", type="primary", use_container_width=True):
+        st.session_state[request_key] = True
+    if st.session_state.get(request_key):
+        try:
+            document = build_t10_transversal_funding_proposal(matrix, profile)
+            st.success("T10 proposal prepared for the selected innovation.")
+            preview, download = st.columns(2)
+            with preview:
+                if st.button("Preview proposal", key=f"t10_preview_{name}", use_container_width=True):
+                    st.session_state[f"t10_preview_open_{name}"] = True
+            with download:
+                st.download_button("Download proposal", data=document, file_name=proposal_filename(name + "_T10"), mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", key=f"t10_download_{name}", use_container_width=True)
+            if st.session_state.get(f"t10_preview_open_{name}"):
+                with st.expander(f"Document preview — {name} Funding Proposal", expanded=True):
+                    st.pdf(render_submission_product_preview_pdf(document), height="stretch", key=f"t10_pdf_{name}")
+        except Exception as exc:
+            st.error(f"The T10 proposal could not be prepared: {exc}")
 def show_funding_proposal_workspace(matrix, profile):
     st.subheader("Compile a funding proposal")
     st.caption(
@@ -1819,7 +1941,6 @@ def on_innovation_change():
                 "proposal_results"):
         st.session_state.pop(key, None)
 
-st.session_state.setdefault("show_add_innovation", False)
 st.markdown(
     """
     <style>
@@ -1841,21 +1962,15 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
-choice_col, add_col = st.columns([3, 1], gap="large")
-with choice_col:
-    st.markdown(
-        '<div style="color:#0070c0;font-weight:900;font-size:1.12rem;'
-        'margin:0 0 .28rem;">Choose Innovation</div>',
-        unsafe_allow_html=True,
-    )
-    selected_name = st.selectbox(
-        "Choose your Innovation", names, key="innovation_selector",
-        on_change=on_innovation_change, label_visibility="collapsed",
-    )
-with add_col:
-    st.markdown("#### Add an Innovation")
-    if st.button("Add Innovation", use_container_width=True, type="primary"):
-        st.session_state.show_add_innovation = True
+st.markdown(
+    '<div style="color:#0070c0;font-weight:900;font-size:1.12rem;'
+    'margin:0 0 .28rem;">Choose Innovation</div>',
+    unsafe_allow_html=True,
+)
+selected_name = st.selectbox(
+    "Choose Innovation", names, key="innovation_selector",
+    on_change=on_innovation_change, label_visibility="collapsed",
+)
 
 saved = next((entry for entry in shared if entry["innovation_name"] == selected_name), {})
 profile = dict(saved.get("d3_profile") or {})
@@ -2042,10 +2157,13 @@ tab_data, tab_documents, tab_funding = st.tabs([
 
 with tab_data:
     show_submission_ready_report(matrix, profile, product_scope="programme")
+    st.caption("Developed by Academy of Resilience and Continuity")
 
 with tab_documents:
     show_submission_ready_report(matrix, profile, product_scope="individual")
+    st.caption("Developed by Academy of Resilience and Continuity")
 
 with tab_funding:
-    show_funding_proposal_workspace(matrix, profile)
+    show_t10_funding_proposal_workspace(matrix, profile)
+    st.caption("Developed by Academy of Resilience and Continuity")
 
