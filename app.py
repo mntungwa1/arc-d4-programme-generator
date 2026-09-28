@@ -1824,30 +1824,23 @@ def build_t10_transversal_funding_proposal(matrix, profile):
         "annexes": [{"n": "1", "name": "Selected innovation profile and evidence record", "status": "Available from the governed platform"}, {"n": "2", "name": "ARC D4 programme outputs and delivery pathway", "status": "Available from the governed platform"}, {"n": "3", "name": "Cost analysis and national pricing basis", "status": "To be completed or confirmed"}],
         "decl": {"text": "This proposal is generated from the controlled innovation record. It must be reviewed and approved by the accountable institution before external submission.", "prepared_by": "Academy of Resilience and Continuity", "approved_by": proposal_placeholder("Approving authority", "Insert the authorised institutional approver before submission.")},
     }
-    # Streamlit Cloud can omit binary Word files during an otherwise valid
-    # deployment. Reassemble the controlled template from its text-safe parts
-    # and keep the file present while docxtpl resolves all embedded assets.
+    # Reassemble the controlled template from text-safe repository parts and
+    # render it directly from memory. This avoids cloud filesystem lifecycle
+    # issues while preserving the supplied T10 layout and fields.
     if not all(path.exists() for path in T10_TRANSVERSAL_FUNDING_TEMPLATE_PARTS):
         raise FileNotFoundError("The packaged T10 proposal template parts are not available.")
     template_bytes = base64.b64decode(
         "".join(path.read_text(encoding="utf-8") for path in T10_TRANSVERSAL_FUNDING_TEMPLATE_PARTS)
     )
-    # A named directory keeps the template and any docxtpl support assets
-    # available until rendering has fully completed.
-    with tempfile.TemporaryDirectory(prefix="arc_d4_t10_") as temp_dir:
-        template_path = Path(temp_dir) / "T10_Transversal_Funding_Proposal.docx"
-        template_path.write_bytes(template_bytes)
-        if not template_path.exists() or template_path.stat().st_size == 0:
-            raise RuntimeError("The packaged T10 template could not be reconstructed.")
-        template = DocxTemplate(str(template_path))
-        template.render(context, autoescape=True)
-        rendered = BytesIO()
-        template.save(rendered)
-        document = Document(BytesIO(rendered.getvalue()))
-        colour_completion_placeholders(document)
-        output = BytesIO()
-        document.save(output)
-        return output.getvalue()
+    template = DocxTemplate(BytesIO(template_bytes))
+    template.render(context, autoescape=True)
+    rendered = BytesIO()
+    template.save(rendered)
+    document = Document(BytesIO(rendered.getvalue()))
+    colour_completion_placeholders(document)
+    output = BytesIO()
+    document.save(output)
+    return output.getvalue()
 
 
 def show_t10_funding_proposal_workspace(matrix, profile):
