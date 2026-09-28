@@ -1990,6 +1990,9 @@ with st.sidebar:
     st.divider()
     st.selectbox("Programme administration", admin_options, key="admin_workspace")
 
+def open_funding_proposal_workspace():
+    st.session_state.admin_workspace = "Funding proposal"
+
 if st.session_state.admin_workspace == "Home":
     st.markdown("### Programme P1a / P1b")
     show_submission_ready_report(matrix, profile)
@@ -1997,8 +2000,11 @@ if st.session_state.admin_workspace == "Home":
     with st.container(border=True):
         st.subheader("Funding proposal")
         st.write("Compile the current innovation into the controlled funder-facing proposal.")
-        if st.button("Open funding-proposal workspace", key="open_funding_proposal", type="primary"):
-            st.session_state.admin_workspace = "Funding proposal"
-            st.rerun()
+        st.button(
+            "Open funding-proposal workspace",
+            key="open_funding_proposal",
+            type="primary",
+            on_click=open_funding_proposal_workspace,
+        )
 else:
     render_workspace(st.session_state.admin_workspace)
