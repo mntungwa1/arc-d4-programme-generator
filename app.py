@@ -1787,7 +1787,23 @@ def build_t10_transversal_funding_proposal(matrix, profile):
             "mel": "Monitoring, evaluation, reporting and learning will use the governed output register, milestone evidence, risk log and periodic delivery reporting.",
             "risks": [{"risk": "Institutional or financing decision is delayed", "rating": "Medium", "owner": value("lead_institution", "Risk owner", "Name the accountable institution."), "mitigation": "Confirm decision rights, financing route and escalation path at inception."}],
         },
-        "cross": {"intro": "The Action will apply inclusion, safeguardintro": "Sustainability is designed through accountable institutional ownership, recurrent-cost transition, capacity transfer and documented handover.", "institutional": value("lead_institution", "Institutional sustainability", "Confirm the accountable institution, mandate and decision rights."), "financial": value("recurrent_cost_custodian", "Financial sustainability", "Confirm the recurrent-cost custodian and budget line."), "exit": "Capacity transfer, documented handover, evidence retention and a recurrent-cost transition review will precede programme exit.", "transition": [{"phase": "Implementation", "who": value("delivery_counterpart", "Delivery counterpart", "Name the implementing organisation."), "condition": "Milestone evidence and accountable handover arrangements are accepted."}, {"phase": "Sustained operation", "who": value("recurrent_cost_custodian", "Recurrent-cost custodian", "Name the responsible budget holder."), "condition": "A confirmed budget and institutional operating arrangement is in place."}]},
+        "cross": {
+            "intro": "The Action will apply inclusion, safeguarding, environmental and social risk management, transparent governance, accessibility and non-digital continuity requirements.",
+            "commitments": [
+                {"item": "Inclusion and safeguarding", "how": "Apply the governed inclusion and safeguarding requirements in implementation and monitoring."},
+                {"item": "Environmental and social responsibility", "how": "Screen delivery actions and record mitigations before implementation."},
+            ],
+        },
+        "sus": {
+            "intro": "Sustainability is designed through accountable institutional ownership, recurrent-cost transition, capacity transfer and documented handover.",
+            "institutional": value("lead_institution", "Institutional sustainability", "Confirm the accountable institution, mandate and decision rights."),
+            "financial": value("recurrent_cost_custodian", "Financial sustainability", "Confirm the recurrent-cost custodian and budget line."),
+            "exit": "Capacity transfer, documented handover, evidence retention and a recurrent-cost transition review will precede programme exit.",
+            "transition": [
+                {"phase": "Implementation", "who": value("delivery_counterpart", "Delivery counterpart", "Name the implementing organisation."), "condition": "Milestone evidence and accountable handover arrangements are accepted."},
+                {"phase": "Sustained operation", "who": value("recurrent_cost_custodian", "Recurrent-cost custodian", "Name the responsible budget holder."), "condition": "A confirmed budget and institutional operating arrangement is in place."},
+            ],
+        },
         "budget": {
             "total_action": total, "requested": total, "cofinancing": proposal_placeholder("Co-financing", "Confirm cash and in-kind contributions with the participating institutions."),
             "basis": value("cost_basis", "Cost basis", "Attach the Annex R.1 comparator or nationally priced basis."),
