@@ -41,6 +41,8 @@ SADC_TEMPLATE_PACK_PARTS = [
     Path(__file__).parent / f"SADC_Template_Pack.part{number:02d}"
     for number in range(1, 22)
 ]
+# Controlled source approved for P1a submission. This is never rewritten by automation.
+FINAL_P1A_SUBMISSION_DOCUMENT = Path(__file__).parent / "Final_SADC_DRM_Innovation_Programme_Reviewed.docx"
 SUBMISSION_PRODUCT_TEMPLATES = {
     "P1a": ("Regional Programme Document", "T1_Regional_Programme_Document.docx"),
     "P1b": ("Programme Summary Brief", "T5_Summary_Brief.docx"),
@@ -837,16 +839,16 @@ def show_submission_ready_report(matrix, profile=None):
 
 
 PRODUCT_HUB_META = {
-    "P1a": ("#f4512a", "▤", "Final SADC DRM Programme", "1"),
-    "P1b": ("#f5a400", "▤", "SADC Innovations Programme Policy Brief", "2"),
-    "P2": ("#65a30d", "✦", "Project Concept Notes", "3"),
-    "P3": ("#1396b4", "▤", "Implementation Plan", "4"),
-    "P4": ("#4662c9", "▤", "Validation Workshop Pack", "5"),
-    "P5": ("#7e45d1", "▤", "Summary Brief", "6"),
-    "P6": ("#d94645", "🤝", "Member State Adoption Plan", "7"),
-    "P7": ("#f17811", "⌁", "Public Warning & Communication Plan", "8"),
-    "P8": ("#07899f", "▤", "Terms of Reference", "9"),
-    "P9": ("#1599b4", "◆", "Completeness Annex", "10"),
+    "P1a": ("#f4512a", "▤", "Final SADC DRM Programme", "1a"),
+    "P1b": ("#f5a400", "▤", "Programme Summary Brief", "1b"),
+    "P2": ("#65a30d", "✦", "Project Concept Note", "2"),
+    "P3": ("#1396b4", "▤", "Implementation Plan", "3"),
+    "P4": ("#4662c9", "▤", "Policy Summary Brief", "4"),
+    "P5": ("#7e45d1", "▤", "Member State Adoption Plan", "5"),
+    "P6": ("#d94645", "🤝", "Public Warning and Communication Plan", "6"),
+    "P7": ("#f17811", "⌁", "Terms of Reference", "7"),
+    "P8": ("#07899f", "▤", "Completeness Annex", "8"),
+    "P9": ("#1599b4", "◆", "Transversal Funding Proposal", "9"),
 }
 
 
@@ -1339,6 +1341,10 @@ def render_submission_product_preview_pdf(docx_content):
 
 def build_filled_submission_product_docx(matrix, profile, product_code):
     """Use the supplied data-driven routine to create a fully populated product."""
+    if product_code == "P1a":
+        if not FINAL_P1A_SUBMISSION_DOCUMENT.exists():
+            raise FileNotFoundError("The approved P1a submission document is not available.")
+        return FINAL_P1A_SUBMISSION_DOCUMENT.read_bytes()
     if product_code == "P9":
         # T10 is a transversal action proposal. The dedicated workspace gathers
         # the funder-facing inputs; this product entry opens the same governed build.
