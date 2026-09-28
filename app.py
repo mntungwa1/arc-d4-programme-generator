@@ -18,6 +18,7 @@ import streamlit as st
 from docx import Document
 from docxtpl import DocxTemplate
 import t10_transversal_funding_proposal_populate as t10_population
+import t5_summary_brief_populate as t5_population
 from docx.enum.table import WD_CELL_VERTICAL_ALIGNMENT
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
@@ -49,6 +50,11 @@ FINAL_P1A_SUBMISSION_DOCUMENT = Path(__file__).parent / "Final_SADC_DRM_Innovati
 P1A_SUBMISSION_PREVIEW_PARTS = [
     Path(__file__).parent / f"P1a_Submission_Preview.part{number:02d}"
     for number in range(1, 17)
+]
+# Final P1b Summary Brief supplied for the programme-wide product.
+P1B_SUMMARY_BRIEF_PARTS = [
+    Path(__file__).parent / f"P1b_Summary_Brief.part{number:02d}"
+    for number in range(1, 13)
 ]
 T10_TRANSVERSAL_FUNDING_TEMPLATE = Path(__file__).parent / "T10_Transversal_Funding_Proposal.docx"
 T10_TRANSVERSAL_FUNDING_TEMPLATE_PARTS = [
@@ -1404,12 +1410,23 @@ def p1a_submission_preview_pdf():
         for encoded in encoded_parts
     )
 
+def p1b_summary_brief_docx():
+    """Reassemble the supplied final P1b programme-wide Word brief."""
+    encoded_parts = [part.read_text(encoding="utf-8") for part in P1B_SUMMARY_BRIEF_PARTS if part.exists()]
+    if len(encoded_parts) != len(P1B_SUMMARY_BRIEF_PARTS):
+        raise FileNotFoundError("The approved P1b summary brief is not available.")
+    encoded = re.sub(r"\s+", "", "".join(encoded_parts))
+    encoded += "=" * (-len(encoded) % 4)
+    return base64.b64decode(encoded)
+
 def build_filled_submission_product_docx(matrix, profile, product_code):
     """Use the supplied data-driven routine to create a fully populated product."""
     if product_code == "P1a":
         if not FINAL_P1A_SUBMISSION_DOCUMENT.exists():
             raise FileNotFoundError("The approved P1a submission document is not available.")
         return FINAL_P1A_SUBMISSION_DOCUMENT.read_bytes()
+    if product_code == "P1b":
+        return p1b_summary_brief_docx()
     if product_code == "P9":
         # T10 is a transversal action proposal. The dedicated workspace gathers
         # the funder-facing inputs; this product entry opens the same governed build.
