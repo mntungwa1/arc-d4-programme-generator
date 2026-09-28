@@ -1787,10 +1787,18 @@ def on_innovation_change():
                 "proposal_results"):
         st.session_state.pop(key, None)
 
-selected_name = st.selectbox(
-    "Innovation to work on", names, key="innovation_selector",
-    on_change=on_innovation_change,
-)
+st.session_state.setdefault("show_add_innovation", False)
+choice_col, add_col = st.columns([3, 1], gap="large")
+with choice_col:
+    selected_name = st.selectbox(
+        "Choose your innovation", names, key="innovation_selector",
+        on_change=on_innovation_change,
+    )
+with add_col:
+    st.markdown("#### Add an innovation")
+    if st.button("Add innovation", use_container_width=True, type="primary"):
+        st.session_state.show_add_innovation = True
+
 saved = next((entry for entry in shared if entry["innovation_name"] == selected_name), {})
 profile = dict(saved.get("d3_profile") or {})
 # The selector is authoritative even if a stored profile has a stale name.
@@ -1806,9 +1814,15 @@ if not selected_portfolio.empty:
         if pd.notna(source_value) and yes(source_value):
             profile.setdefault(f"score_{symbol}", float(source_value))
 
-st.title("ARC D4 Delivery Platform")
-st.caption("A controlled programme record that routes a portfolio innovation through admission, appraisal, verification, generation and product readiness.")
-st.markdown(f"**Selected innovation:** {selected_name}")
+if st.session_state.show_add_innovation:
+    with st.expander("Add an innovation", expanded=True):
+        if signed_in:
+            profile_form(matrix, st.session_state.new_profile, "new", signed_in)
+        else:
+            st.warning("Sign in to add a shared innovation.")
+        if st.button("Close new innovation form", key="close_new_innovation"):
+            st.session_state.show_add_innovation = False
+            st.rerun()
 
 
 def render_workspace(workspace):
@@ -1959,32 +1973,32 @@ def render_workspace(workspace):
     else:
         show_funding_proposal_workspace(matrix, profile)
 
-submission_group, programme_group = st.tabs(["Submission and products", "Programme work"])
-
-submission_labels = ["Submission-ready report", "Product readiness", "Funding proposal"]
-programme_labels = [
+# The landing view deliberately shows only the current programme picture,
+# innovation controls, ready products and the standalone funding-proposal entry.
+# Detailed management work remains available from the collapsed sidebar.
+admin_options = [
+    "Home",
+    "Product readiness",
+    "Funding proposal",
     "Programme command",
     "Workstream C — portfolio admission",
     "Workstream D — innovation delivery",
     "Research and verification",
 ]
+st.session_state.setdefault("admin_workspace", "Home")
+with st.sidebar:
+    st.divider()
+    st.selectbox("Programme administration", admin_options, key="admin_workspace")
 
-with submission_group:
-    submission_tabs = st.tabs(submission_labels)
-    with submission_tabs[0]:
-        render_workspace("Submission-ready report")
-    with submission_tabs[1]:
-        render_workspace("Product readiness")
-    with submission_tabs[2]:
-        render_workspace("Funding proposal")
+if st.session_state.admin_workspace == "Home":
+    st.markdown("### Programme P1a / P1b")
+    show_submission_ready_report(matrix, profile)
 
-with programme_group:
-    programme_tabs = st.tabs(programme_labels)
-    with programme_tabs[0]:
-        render_workspace("Programme command")
-    with programme_tabs[1]:
-        render_workspace("Workstream C — portfolio admission")
-    with programme_tabs[2]:
-        render_workspace("Workstream D — innovation delivery")
-    with programme_tabs[3]:
-        render_workspace("Research and verification")
+    with st.container(border=True):
+        st.subheader("Funding proposal")
+        st.write("Compile the current innovation into the controlled funder-facing proposal.")
+        if st.button("Open funding-proposal workspace", key="open_funding_proposal", type="primary"):
+            st.session_state.admin_workspace = "Funding proposal"
+            st.rerun()
+else:
+    render_workspace(st.session_state.admin_workspace)
