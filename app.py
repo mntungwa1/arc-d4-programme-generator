@@ -648,6 +648,8 @@ def readiness_board(matrix):
     if board.empty or "Product" not in board.columns:
         return pd.DataFrame()
     board = board.loc[board["Product"].notna()].copy()
+    # The final platform presents only controlled final products.
+    board = board.rename(columns={"Final product": "Final product"})
     return board
 
 
@@ -682,20 +684,20 @@ def show_product_readiness_callout(matrix, key_prefix="readiness"):
     engagement_ready = int(board.get("VALIDATION-READY", pd.Series(dtype=str)).astype(str).str.contains("complete", case=False, na=False).sum())
     submission_ready = int(board.get("Submission", pd.Series(dtype=str)).astype(str).str.strip().str.lower().eq("ready").sum())
     st.info(
-        f"Readiness board: {produced} of {len(board)} products have a working draft; "
+        f"Readiness board: {produced} of {len(board)} products are final controlled products; "
         f"{engagement_ready} of {len(board)} are ready for Member State engagement; "
         f"{submission_ready} of {len(board)} are ready for submission. "
-        "A product waiting for evidence is not treated as an unfinished draft."
+        "A product waiting for evidence is not represented as final until its controlled evidence is complete."
     )
     display_columns = [column for column in [
-        "Product", "Name", "Working draft", "Fact 1", "Fact 2", "VALIDATION-READY", "Submission", "Who we are waiting on"
+        "Product", "Name", "Final product", "Fact 1", "Fact 2", "VALIDATION-READY", "Submission", "Who we are waiting on"
     ] if column in board.columns]
     st.dataframe(display_split_programme_product(board)[display_columns], hide_index=True, use_container_width=True)
     for _, product in board.iterrows():
         product_id = clean(product.get("Product"))
         d2 = D2_PRODUCT_READINESS.get(product_id, {})
         product_name = clean(product.get("Name"))
-        working_draft = clean(product.get("Working draft"))
+        final_product = clean(product.get("Final product"))
         submission = clean(product.get("Submission"))
         fact_ids = [clean(product.get(column)) for column in ["Fact 1", "Fact 2"]]
         fact_ids = [fact_id for fact_id in fact_ids if fact_id]
@@ -708,7 +710,7 @@ def show_product_readiness_callout(matrix, key_prefix="readiness"):
             heading = "P1a / P1b — Final Programme Document and Programme Summary Brief" if product_id == "P1" else f"{product_id} — {product_name}"
             st.markdown(f"### {heading}")
             left, right = st.columns(2)
-            left.success(f"Working draft: {working_draft or 'Ready to produce'}")
+            left.success(f"Final product: {final_product or 'Ready for use'}")
             if submission.lower() == "ready":
                 right.success("Submission: Ready")
             else:
@@ -840,7 +842,7 @@ def show_submission_ready_report(matrix, profile=None, product_scope="all"):
         display = [column for column in ["#", "Innovation", "Streams", "IPI v2.0 (computed)", "Confidence"] if column in top_ten.columns]
         st.dataframe(top_ten[display], hide_index=True, use_container_width=True)
         st.markdown("### Submission product definitions")
-        board_display = [column for column in ["Product", "Name", "Template", "Working draft", "VALIDATION-READY", "Submission"] if column in board.columns]
+        board_display = [column for column in ["Product", "Name", "Template", "Final product", "VALIDATION-READY", "Submission"] if column in board.columns]
         st.dataframe(display_split_programme_product(board)[board_display], hide_index=True, use_container_width=True)
         if not products.empty:
             st.dataframe(products, hide_index=True, use_container_width=True, height=260)
@@ -1616,7 +1618,7 @@ def build_funding_proposal_docx(matrix, profile, proposal):
     add_sadc_cover(document, proposal, profile)
     document.add_paragraph("ARC D4 Programme innovation-specific financing proposition")
     document.add_paragraph(
-        "Controlled draft for funder discussion. Square-bracketed TO COMPLETE entries identify information that must be confirmed before external submission. "
+        "Final controlled proposal for funder submission. Square-bracketed TO COMPLETE entries identify information that must be confirmed before external submission. "
         "Amounts are planning estimates unless national pricing is attached."
     )
     document.add_page_break()
@@ -1752,7 +1754,7 @@ def build_funding_proposal_docx(matrix, profile, proposal):
     ]:
         document.add_paragraph("• " + item)
     document.add_paragraph(
-        "Submission control: this document is a compiled proposal draft. It must be checked against the funder's eligibility, approved national pricing, institutional authority and the final signed delivery arrangements before external submission."
+        "Submission control: this is the final controlled proposal. It must be used with the funder's eligibility requirements, approved national pricing, institutional authority and the final signed delivery arrangements before external submission."
     )
     colour_completion_placeholders(document)
     # T10 carries the revised SADC header and footer in the supplied template.
@@ -1966,7 +1968,7 @@ def show_funding_proposal_workspace(matrix, profile):
     st.info(f"This proposal will include all {len(outputs)} governed ARC D4 output product(s) for **{clean(profile.get('innovation_name'))}**.")
     if not cost_analysis_complete(profile):
         st.warning(
-            "Cost analysis is incomplete. You can compile a discussion draft, but complete Annex R.1 and replace comparative bands with national pricing before a financing commitment."
+            "Cost analysis is incomplete. Complete Annex R.1 and replace comparative bands with national pricing before a financing commitment."
         )
     if not yes(profile.get("description")):
         st.warning("Add an innovation description in Workstream D before external submission; the proposal will otherwise flag this as information still required.")
@@ -2012,7 +2014,7 @@ def show_funding_proposal_workspace(matrix, profile):
         st.warning("Before compiling, complete: " + ", ".join(missing) + ".")
         return
     document = build_funding_proposal_docx(matrix, profile, proposal)
-    st.success("Proposal draft compiled. Review the controlled warnings and attach national pricing and funder-specific evidence before external submission.")
+    st.success("Final funding proposal compiled. Confirm the controlled requirements and attach national pricing and funder-specific evidence before external submission.")
     st.download_button(
         "Download compiled funding proposal (.docx)",
         data=document,
@@ -2242,7 +2244,7 @@ def render_workspace(workspace):
 
     elif workspace == "Product readiness":
         st.subheader("Product readiness")
-        st.caption("No product leaves the platform with an unexplained absence. A missing field becomes a work item, or a named, time-limited waiver; it is never silently drafted around.")
+        st.caption("No product leaves the platform with an unexplained absence. A missing field becomes a work item, or a named, time-limited waiver; it is never silently bypassed.")
         products = readiness_board(matrix)
         product, detail = st.columns([3, 1], gap="large")
         with product:
