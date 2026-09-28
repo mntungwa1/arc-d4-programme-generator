@@ -207,7 +207,7 @@ def read_matrix(source) -> dict[str, pd.DataFrame]:
 
 
 @st.cache_data(show_spinner=False)
-def default_matrix(cache_version="matrix-v3.8-complete-delivery-handover-1"):
+def default_matrix(cache_version="matrix-v4-final-sadc-template-pack"):
     # cache_version deliberately changes whenever the matrix parser changes.
     # Streamlit otherwise retains a previously mis-parsed workbook across deploys.
     return read_matrix(BytesIO(base64.b64decode(BOOK.read_text())))
@@ -1761,7 +1761,7 @@ signed_in = approval_controls()
 
 try:
     uploaded = st.sidebar.file_uploader("Replace the governed automation matrix", type="xlsx")
-    matrix = read_matrix(uploaded) if uploaded else default_matrix("matrix-v3.8-complete-delivery-handover-1")
+    matrix = read_matrix(uploaded) if uploaded else default_matrix("matrix-v4-final-sadc-template-pack")
 except Exception as exc:
     st.error(f"The automation matrix could not be read: {exc}")
     st.stop()
