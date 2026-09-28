@@ -649,7 +649,7 @@ def readiness_board(matrix):
         return pd.DataFrame()
     board = board.loc[board["Product"].notna()].copy()
     # The final platform presents only controlled final products.
-    board = board.rename(columns={"Final product": "Final product"})
+    board.columns = ["Final product" if clean(column).lower().startswith("working ") else column for column in board.columns]
     return board
 
 
