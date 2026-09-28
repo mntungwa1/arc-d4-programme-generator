@@ -781,7 +781,10 @@ def show_submission_ready_report(matrix, profile=None, product_scope="all"):
     # Each public tab has one unambiguous product scope, so there are no
     # extra lower selectors competing with the main navigation.
     programme_codes = ["P1a", "P1b"]
-    individual_codes = [code for code in SUBMISSION_PRODUCT_TEMPLATES if code not in programme_codes]
+    individual_codes = [
+        code for code in SUBMISSION_PRODUCT_TEMPLATES
+        if code not in programme_codes and code != "P9"
+    ]
     if product_scope == "programme":
         show_submission_product_buttons(matrix, profile or {}, programme_codes, selected_innovation)
     elif product_scope == "individual":
@@ -883,10 +886,13 @@ def show_submission_product_hub(matrix, profile, product_codes, selected_innovat
     )
     st.markdown('<div class="arc-hub-title">SADC Innovations Programme — Submission Product Hub</div>', unsafe_allow_html=True)
 
-    left_codes = [code for code in product_codes if code in {"P10", "P9", "P8", "P7", "P6"}]
-    right_codes = [code for code in product_codes if code not in left_codes]
+    # P5 is deliberately centred beneath the SADC hub; it balances the
+    # individual-document view while P9 is now provided by the funding tab.
+    centre_codes = [code for code in product_codes if code == "P5"]
+    left_codes = [code for code in product_codes if code in {"P8", "P7", "P6"}]
+    right_codes = [code for code in product_codes if code not in left_codes + centre_codes]
     # Preserve a balanced figure when only a subset is being shown.
-    if not left_codes:
+    if not left_codes and not centre_codes:
         left_codes, right_codes = product_codes[::2], product_codes[1::2]
 
     left, centre, right = st.columns([4.7, 2.3, 4.7], gap="medium")
@@ -921,6 +927,9 @@ def show_submission_product_hub(matrix, profile, product_codes, selected_innovat
                     )
                 except Exception as exc:
                     st.error(f"{product_code} could not be prepared: {exc}")
+
+    for product_code in centre_codes:
+        product_lane(centre, product_code)
 
     max_rows = max(len(left_codes), len(right_codes))
     for index in range(max_rows):
