@@ -17,6 +17,7 @@ import pandas as pd
 import streamlit as st
 from docx import Document
 from docxtpl import DocxTemplate
+import t10_transversal_funding_proposal_populate as t10_population
 from docx.enum.table import WD_CELL_VERTICAL_ALIGNMENT
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
@@ -46,7 +47,7 @@ FINAL_P1A_SUBMISSION_DOCUMENT = Path(__file__).parent / "Final_SADC_DRM_Innovati
 T10_TRANSVERSAL_FUNDING_TEMPLATE = Path(__file__).parent / "T10_Transversal_Funding_Proposal.docx"
 T10_TRANSVERSAL_FUNDING_TEMPLATE_PARTS = [
     Path(__file__).parent / f"T10_Transversal_Funding_Proposal.part{number:02d}"
-    for number in range(1, 6)
+    for number in range(1, 7)
 ]
 SUBMISSION_PRODUCT_TEMPLATES = {
     "P1a": ("Regional Programme Document", "T1_Regional_Programme_Document.docx"),
@@ -1727,7 +1728,7 @@ def build_funding_proposal_docx(matrix, profile, proposal):
     return buffer.getvalue()
 
 
-def build_t10_transversal_funding_proposal(matrix, profile):
+def build_t10_transversal_funding_proposal_legacy(matrix, profile):
     """Populate the supplied T10 template from the selected governed innovation."""
     if not all(path.exists() for path in T10_TRANSVERSAL_FUNDING_TEMPLATE_PARTS):
         raise FileNotFoundError("The packaged T10 Transversal Funding Proposal template is not available.")
@@ -1842,6 +1843,62 @@ def build_t10_transversal_funding_proposal(matrix, profile):
     document.save(output)
     return output.getvalue()
 
+
+
+def render_t10_transversal_context(context):
+    """Render the supplied revised T10 template from a controlled context."""
+    if not all(path.exists() for path in T10_TRANSVERSAL_FUNDING_TEMPLATE_PARTS):
+        raise FileNotFoundError("The packaged T10 Transversal Funding Proposal template is not available.")
+    template_bytes = base64.b64decode(
+        "".join(path.read_text(encoding="utf-8") for path in T10_TRANSVERSAL_FUNDING_TEMPLATE_PARTS)
+    )
+    template = DocxTemplate(BytesIO(template_bytes))
+    template.render(context, autoescape=True)
+    rendered = BytesIO()
+    template.save(rendered)
+    document = Document(BytesIO(rendered.getvalue()))
+    colour_completion_placeholders(document)
+    output = BytesIO()
+    document.save(output)
+    return output.getvalue()
+
+
+def build_t10_transversal_funding_proposal(matrix, profile, member_states=8, years=5):
+    """Use the supplied T10 D2/D3/cost-matrix logic for a portfolio record.
+
+    New shared innovations are retained through the established individual-record
+    generator until they have a governed portfolio number and D2/D3 evidence.
+    """
+    name = clean(profile.get("innovation_name"))
+    portfolio = table(matrix, "06_Portfolio")
+    selected = portfolio.loc[portfolio.get("Innovation", pd.Series(dtype=str)).astype(str) == name]
+    if selected.empty:
+        return build_t10_transversal_funding_proposal_legacy(matrix, profile)
+
+    number = pd.to_numeric(selected.iloc[0].get("#"), errors="coerce")
+    if pd.isna(number):
+        return build_t10_transversal_funding_proposal_legacy(matrix, profile)
+
+    pack_path = None
+    try:
+        # The supplied population code deliberately reads the governed source
+        # workbook rather than reconstructed app fields.
+        with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as source:
+            source.write(base64.b64decode(BOOK.read_text()))
+            source.flush()
+            pack_path = Path(source.name)
+        pack = t10_population.DataPack(str(pack_path))
+        context = t10_population.build_context(
+            pack, [int(number)], int(member_states), int(years)
+        )
+        return render_t10_transversal_context(context)
+    except (SystemExit, KeyError, ValueError, OSError, zipfile.BadZipFile):
+        # Preserve the individual proposal route for a matrix that lacks a
+        # required D2/D3 sheet or a newly admitted innovation.
+        return build_t10_transversal_funding_proposal_legacy(matrix, profile)
+    finally:
+        if pack_path:
+            pack_path.unlink(missing_ok=True)
 
 def show_t10_funding_proposal_workspace(matrix, profile):
     """One-click, innovation-specific T10 funding proposal workspace."""
