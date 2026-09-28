@@ -1717,8 +1717,10 @@ def show_funding_proposal_workspace(matrix, profile):
     with left:
         title = st.text_input("Proposal title *", value=f"Funding proposal: {clean(profile.get('innovation_name'))}", key="proposal_title")
         funder_name = st.text_input("Funder name *", placeholder="Name of prospective funding partner", key="proposal_funder")
-        funder_type = st.selectbox("Funder type", ["Grant fund", "Development finance institution", "Climate fund", "Philanthropic foundation", "Bilateral partner", "Corporate / private sector", "Other"], key="proposal_funder_type")
-        instrument = st.selectbox("Requested funding instrument", ["Grant", "Concessional finance", "Blended finance", "Technical assistance", "Guarantee / risk finance", "To be agreed"], key="proposal_instrument")
+        # Controlled defaults: keep the public proposal workspace focused on
+        # information supplied by the user, without exposing extra selectors.
+        funder_type = "Grant fund"
+        instrument = "Grant"
         requested_amount = st.number_input("Amount requested (USD) *", min_value=0.0, step=10000.0, key="proposal_amount")
     with right:
         scope = st.text_input("Implementation geography / scope *", placeholder="e.g. Regional SADC programme or named Member State", key="proposal_scope")
@@ -1817,9 +1819,14 @@ st.markdown(
 )
 choice_col, add_col = st.columns([3, 1], gap="large")
 with choice_col:
+    st.markdown(
+        '<div style="color:#0070c0;font-weight:900;font-size:1.12rem;'
+        'margin:0 0 .28rem;">Choose your Innovation</div>',
+        unsafe_allow_html=True,
+    )
     selected_name = st.selectbox(
         "Choose your Innovation", names, key="innovation_selector",
-        on_change=on_innovation_change,
+        on_change=on_innovation_change, label_visibility="collapsed",
     )
 with add_col:
     st.markdown("#### Add an Innovation")
