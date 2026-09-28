@@ -2047,6 +2047,33 @@ def on_innovation_change():
                 "proposal_results"):
         st.session_state.pop(key, None)
 
+
+if "active_innovation_name" not in st.session_state:
+    st.session_state.active_innovation_name = names[0] if names else ""
+
+
+def choose_active_innovation(widget_key):
+    """Show the shared innovation choice only in innovation-specific tabs."""
+    current = st.session_state.active_innovation_name
+    if st.session_state.get(widget_key) not in names:
+        st.session_state[widget_key] = current
+
+    def activate_choice():
+        chosen = st.session_state[widget_key]
+        if chosen != st.session_state.active_innovation_name:
+            st.session_state.active_innovation_name = chosen
+            # Keep the other innovation-specific tab aligned on the same record.
+            for related_key in ("innovation_document_selector", "innovation_funding_selector"):
+                st.session_state[related_key] = chosen
+            on_innovation_change()
+
+    return st.selectbox(
+        "Choose Innovation",
+        names,
+        key=widget_key,
+        on_change=activate_choice,
+    )
+
 st.markdown(
     """
     <style>
@@ -2054,11 +2081,11 @@ st.markdown(
         color: #07366e; text-align: center; font-weight: 800;
         font-size: 2rem; margin: .35rem 0 1.1rem;
       }
-      .st-key-innovation_selector label {
+      .st-key-innovation_document_selector label, .st-key-innovation_funding_selector label {
         color: #0070c0 !important; font-weight: 800 !important;
         font-size: 1.08rem !important;
       }
-      .st-key-innovation_selector [data-baseweb="select"] > div {
+      .st-key-innovation_document_selector [data-baseweb="select"] > div, .st-key-innovation_funding_selector [data-baseweb="select"] > div {
         border: 2px solid #0070c0 !important;
         border-radius: 9px !important;
         box-shadow: none !important;
@@ -2068,15 +2095,9 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
-st.markdown(
-    '<div style="color:#0070c0;font-weight:900;font-size:1.12rem;'
-    'margin:0 0 .28rem;">Choose Innovation</div>',
-    unsafe_allow_html=True,
-)
-selected_name = st.selectbox(
-    "Choose Innovation", names, key="innovation_selector",
-    on_change=on_innovation_change, label_visibility="collapsed",
-)
+# P1a/P1b are programme-wide documents.  An innovation is selected only in
+# the two innovation-specific tabs below.
+selected_name = st.session_state.active_innovation_name
 
 saved = next((entry for entry in shared if entry["innovation_name"] == selected_name), {})
 profile = dict(saved.get("d3_profile") or {})
@@ -2251,14 +2272,22 @@ tab_data, tab_documents, tab_funding = st.tabs([
 ])
 
 with tab_data:
+    st.text_input(
+        "Innovation",
+        value="Innovation cannot be chosen under this Tab, choose next Tab",
+        disabled=True,
+        key="innovation_programme_instruction",
+    )
     show_submission_ready_report(matrix, profile, product_scope="programme")
     st.caption("Developed by Academy of Resilience and Continuity")
 
 with tab_documents:
+    choose_active_innovation("innovation_document_selector")
     show_submission_ready_report(matrix, profile, product_scope="individual")
     st.caption("Developed by Academy of Resilience and Continuity")
 
 with tab_funding:
+    choose_active_innovation("innovation_funding_selector")
     show_t10_funding_proposal_workspace(matrix, profile)
     st.caption("Developed by Academy of Resilience and Continuity")
 
