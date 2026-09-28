@@ -2003,17 +2003,6 @@ if not selected_portfolio.empty:
         if pd.notna(source_value) and yes(source_value):
             profile.setdefault(f"score_{symbol}", float(source_value))
 
-if st.session_state.show_add_innovation:
-    with st.expander("Add an innovation", expanded=True):
-        if signed_in:
-            profile_form(matrix, st.session_state.new_profile, "new", signed_in)
-        else:
-            st.warning("Sign in to add a shared innovation.")
-        if st.button("Close new innovation form", key="close_new_innovation"):
-            st.session_state.show_add_innovation = False
-            st.rerun()
-
-
 def render_workspace(workspace):
     if workspace == "Submission-ready report":
         with st.expander("Current stage and open actions", expanded=False):
