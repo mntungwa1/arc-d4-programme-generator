@@ -70,7 +70,7 @@ SUBMISSION_PRODUCT_TEMPLATES = {
     "P1b": ("Programme Summary Brief", "T5_Summary_Brief.docx"),
     "P2": ("Project Concept Note", "T2_Project_Concept_Note.docx"),
     "P3": ("Implementation Plan", "T3_Implementation_Plan.docx"),
-    "P4": ("Policy Summary Brief", "T5_Summary_Brief.docx"),
+    "P4": ("T5 Policy Summary Brief", "T5_Summary_Brief.docx"),
     "P5": ("Member State Adoption Plan", "T6_Member_State_Adoption_Plan.docx"),
     "P6": ("Public Warning and Communication Plan", "T7_Public_Warning_Communication_Plan.docx"),
     "P7": ("Terms of Reference", "T8_Terms_of_Reference.docx"),
