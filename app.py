@@ -79,7 +79,7 @@ SUBMISSION_PRODUCT_TEMPLATES = {
 }
 SUBMISSION_PRODUCT_TEMPLATE_ARCHIVE = Path(__file__).parent / "Submission_Product_Templates.zip.b64"
 TEMPLATE_POPULATION_KIT = Path(__file__).parent / "SADC_Template_Population_Kit.zip.b64"
-REGIONAL_PRODUCTS = {"P1a", "P1b", "P4", "P6"}
+REGIONAL_PRODUCTS = {"P1a", "P1b", "P6"}
 SADC_HEADER_IMAGE = Path(__file__).parent / "SADC_Head_New.png"
 SADC_FOOTER_IMAGE = Path(__file__).parent / "SADC_Foot_New.png"
 SADC_HEADER_ASPECT = 290 / 2048
@@ -879,7 +879,7 @@ PRODUCT_HUB_META = {
     "P1b": ("#f5a400", "▤", "Programme Summary Brief", "1b"),
     "P2": ("#65a30d", "✦", "Project Concept Note", "2"),
     "P3": ("#1396b4", "▤", "Implementation Plan", "3"),
-    "P4": ("#4662c9", "▤", "Policy Summary Brief", "4"),
+    "P4": ("#4662c9", "▤", "T5 Policy Summary Brief", "4"),
     "P5": ("#7e45d1", "▤", "Member State Adoption Plan", "5"),
     "P6": ("#d94645", "🤝", "Public Warning and Communication Plan", "6"),
     "P7": ("#f17811", "⌁", "Terms of Reference", "7"),
