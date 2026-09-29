@@ -958,8 +958,12 @@ def show_submission_product_hub(matrix, profile, product_codes, selected_innovat
                 except Exception as exc:
                     st.error(f"{product_code} could not be prepared: {exc}")
 
-    for product_code in centre_codes:
-        product_lane(centre, product_code)
+    # P5 is deliberately below the centred hub.  Give it a wider dedicated
+    # middle lane so its existing Preview and Download controls remain full-size.
+    if centre_codes:
+        _p5_left, p5_centre, _p5_right = st.columns([3, 5, 3], gap="medium")
+        for product_code in centre_codes:
+            product_lane(p5_centre, product_code)
 
     max_rows = max(len(left_codes), len(right_codes))
     for index in range(max_rows):
