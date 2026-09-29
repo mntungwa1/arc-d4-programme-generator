@@ -1980,7 +1980,9 @@ def show_t10_funding_proposal_workspace(matrix, profile):
     st.caption("The proposal is populated from the selected innovation and the governed ARC D4 record using the supplied T10 Transversal Funding Proposal template.")
     request_key = f"t10_proposal_requested_{name}"
     if st.button(f"{name} Funding Proposal", key=f"t10_proposal_button_{name}", type="primary", use_container_width=True):
+        # The main action compiles and opens the actual populated proposal immediately.
         st.session_state[request_key] = True
+        st.session_state[f"t10_preview_open_{name}"] = True
     if st.session_state.get(request_key):
         try:
             document = build_t10_transversal_funding_proposal(matrix, profile)
@@ -2092,6 +2094,10 @@ def on_innovation_change():
                 "proposal_duration", "proposal_alignment", "proposal_problem",
                 "proposal_results"):
         st.session_state.pop(key, None)
+    # Do not carry a generated proposal or preview into a different innovation.
+    for key in list(st.session_state):
+        if key.startswith("t10_proposal_requested_") or key.startswith("t10_preview_open_"):
+            st.session_state.pop(key, None)
 
 
 if "active_innovation_name" not in st.session_state:
