@@ -31,6 +31,28 @@ SUPABASE_URL = "https://wrejrxzgyuxsfbxutezg.supabase.co"
 SUPABASE_KEY = "sb_publishable_UfYoG2ZgKP0nLA5KGwEG6w_2rCP9_R8"
 APP_URL = "https://arc-d4-programme-generator-c7qdwgesqvnwjafgvpxgat.streamlit.app/"
 ADMIN_EMAILS = {"dingaan@academyrc.co.za", "drcliff@academyrc.co.za"}
+
+# D1 Inception Report scope: the programme covers all 16 SADC Member States.
+# These are capital-city reference points for regional GIS viewing. They are
+# deliberately not presented as the location of a particular innovation.
+SADC_SCOPE_LOCATIONS = [
+    {"Member State": "Angola", "Reference location": "Luanda", "Latitude": -8.839, "Longitude": 13.289},
+    {"Member State": "Botswana", "Reference location": "Gaborone", "Latitude": -24.628, "Longitude": 25.923},
+    {"Member State": "Comoros", "Reference location": "Moroni", "Latitude": -11.717, "Longitude": 43.247},
+    {"Member State": "Democratic Republic of the Congo", "Reference location": "Kinshasa", "Latitude": -4.325, "Longitude": 15.322},
+    {"Member State": "Eswatini", "Reference location": "Mbabane", "Latitude": -26.305, "Longitude": 31.136},
+    {"Member State": "Lesotho", "Reference location": "Maseru", "Latitude": -29.316, "Longitude": 27.483},
+    {"Member State": "Madagascar", "Reference location": "Antananarivo", "Latitude": -18.879, "Longitude": 47.508},
+    {"Member State": "Malawi", "Reference location": "Lilongwe", "Latitude": -13.962, "Longitude": 33.775},
+    {"Member State": "Mauritius", "Reference location": "Port Louis", "Latitude": -20.161, "Longitude": 57.498},
+    {"Member State": "Mozambique", "Reference location": "Maputo", "Latitude": -25.969, "Longitude": 32.573},
+    {"Member State": "Namibia", "Reference location": "Windhoek", "Latitude": -22.561, "Longitude": 17.066},
+    {"Member State": "Seychelles", "Reference location": "Victoria", "Latitude": -4.619, "Longitude": 55.451},
+    {"Member State": "South Africa", "Reference location": "Pretoria", "Latitude": -25.747, "Longitude": 28.229},
+    {"Member State": "Tanzania", "Reference location": "Dodoma", "Latitude": -6.163, "Longitude": 35.751},
+    {"Member State": "Zambia", "Reference location": "Lusaka", "Latitude": -15.388, "Longitude": 28.322},
+    {"Member State": "Zimbabwe", "Reference location": "Harare", "Latitude": -17.825, "Longitude": 31.033},
+]
 BOOK = Path(__file__).parent / "ARC_D4_Automation_Matrix.b64"
 SADC_PROPOSAL_TEMPLATE = Path(__file__).parent / "SADC_Proposal_Template.b64"
 SADC_PROPOSAL_TEMPLATE_PARTS = [
@@ -2188,6 +2210,45 @@ if not selected_portfolio.empty:
         if pd.notna(source_value) and yes(source_value):
             profile.setdefault(f"score_{symbol}", float(source_value))
 
+def show_gis_scope_map():
+    """Administrator-only D1 scope map for the 16 SADC Member States."""
+    st.subheader("GIS scope map")
+    st.caption(
+        "D1 Inception Report scope: regional coverage across all 16 SADC Member States. "
+        "Markers are capital-city geographic reference points for programme planning."
+    )
+    locations = pd.DataFrame(SADC_SCOPE_LOCATIONS)
+    chosen = st.multiselect(
+        "Member States to display",
+        locations["Member State"].tolist(),
+        default=locations["Member State"].tolist(),
+        key="gis_scope_member_states",
+    )
+    visible = locations.loc[locations["Member State"].isin(chosen)].copy()
+    if visible.empty:
+        st.info("Select at least one Member State to view its geographic reference point.")
+        return
+    st.map(
+        visible.rename(columns={"Latitude": "lat", "Longitude": "lon"}),
+        latitude="lat",
+        longitude="lon",
+        size=80,
+        color="#003E78",
+        zoom=3,
+        use_container_width=True,
+    )
+    st.dataframe(
+        visible[["Member State", "Reference location", "Latitude", "Longitude"]],
+        hide_index=True,
+        use_container_width=True,
+    )
+    st.info(
+        "These markers show the D1 programme-coverage geography, not confirmed innovation sites. "
+        "Add an innovation's exact coordinates only once they are supplied or validated through the "
+        "Member State / implementing institution."
+    )
+
+
 def render_workspace(workspace):
     if workspace == "Submission-ready report":
         with st.expander("Current stage and open actions", expanded=False):
@@ -2334,6 +2395,8 @@ def render_workspace(workspace):
 
     elif workspace == "Submission-ready report":
         show_submission_ready_report(matrix, profile)
+    elif workspace == "GIS scope map":
+        show_gis_scope_map()
     else:
         show_funding_proposal_workspace(matrix, profile)
 
@@ -2383,6 +2446,7 @@ if is_admin:
                 "Workstream D — innovation delivery",
                 "Research and verification",
                 "Product readiness",
+                "GIS scope map",
             ],
             key="administration_workspace",
         )
