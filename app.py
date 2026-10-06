@@ -2067,6 +2067,16 @@ def show_funding_proposal_workspace(matrix, profile):
 auth_sidebar()
 signed_in = approval_controls()
 
+# The login, account-confirmation and access-request controls remain public.
+# All controlled programme data, document previews, generated files and downloads
+# are withheld until the user has an approved authenticated session.
+if not signed_in:
+    st.info(
+        "Sign in with a confirmed, approved account to access the controlled "
+        "programme data, document previews and downloads."
+    )
+    st.stop()
+
 try:
     uploaded = st.sidebar.file_uploader("Replace the governed automation matrix", type="xlsx")
     matrix = read_matrix(uploaded) if uploaded else default_matrix("matrix-v4-final-sadc-template-pack")
