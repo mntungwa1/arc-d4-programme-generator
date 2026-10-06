@@ -2227,61 +2227,82 @@ def _normalise_country(value):
 def _country_aliases():
     aliases = {}
     for entry in SADC_SCOPE_LOCATIONS:
-        key = entry["Member State"]
-        aliases[_normalise_country(key)] = key
+        aliases[_normalise_country(entry["Member State"])] = entry["Member State"]
     aliases.update({
+        "ago": "Angola", "ang": "Angola",
+        "bwa": "Botswana", "bot": "Botswana",
+        "com": "Comoros", "cod": "Democratic Republic of the Congo",
         "drc": "Democratic Republic of the Congo",
         "drcongo": "Democratic Republic of the Congo",
         "democraticrepublicofthecongo": "Democratic Republic of the Congo",
-        "tanzania": "Tanzania",
-        "unitedrepublicoftanzania": "Tanzania",
-        "eswatini": "Eswatini",
-        "swaziland": "Eswatini",
+        "swz": "Eswatini", "esw": "Eswatini", "swaziland": "Eswatini",
+        "lso": "Lesotho", "mdg": "Madagascar", "mwi": "Malawi",
+        "mus": "Mauritius", "moz": "Mozambique", "nam": "Namibia",
+        "syc": "Seychelles", "zaf": "South Africa",
+        "tza": "Tanzania", "unitedrepublicoftanzania": "Tanzania",
+        "zmb": "Zambia", "zwe": "Zimbabwe",
     })
     return aliases
 
 
-def _country_column(frame):
-    recognised = {
-        "country", "memberstate", "memberstatecountry", "sadcmemberstate",
-        "locationcountry", "geography", "geographiccoverage",
-    }
-    for column in frame.columns:
-        if _normalise_country(column) in recognised:
-            return column
-    return None
-
-
-def _matrix_country_counts(matrix, layer):
-    """Count only explicit country-attributed records in the governed matrix."""
+def _countries_in_text(value):
+    text = clean(value)
+    if not text:
+        return []
     aliases = _country_aliases()
-    counts = {entry["Member State"]: 0 for entry in SADC_SCOPE_LOCATIONS}
-    layer_terms = {
-        "D2 innovation ecosystem": ("portfolio", "innovation", "ecosystem", "landscape"),
-        "D3 gaps and opportunities": ("gap", "opportunity", "priority", "readiness", "resolution"),
-        "Programme pipeline": ("stage", "step", "output", "product", "programme"),
-    }
-    terms = layer_terms.get(layer, ())
-    for sheet_name, frame in matrix.items():
-        sheet_key = clean(sheet_name).lower()
-        if terms and not any(term in sheet_key for term in terms):
-            continue
-        country_field = _country_column(frame)
-        if country_field is None:
-            continue
-        for raw_value in frame[country_field].dropna():
-            country = aliases.get(_normalise_country(raw_value))
+    found = []
+    normalised = _normalise_country(text)
+    for alias, country in aliases.items():
+        if len(alias) >= 3 and alias in normalised:
+            found.append(country)
+    return list(dict.fromkeys(found))
+
+
+def _d2_innovation_locations(matrix):
+    """Map only the explicit geography recorded in D2 Innovation Profile."""
+    profile = table(matrix, "48_D2_Innovation_Profile")
+    expected = {"Innovation", "Geography"}
+    if profile.empty or not expected.issubset(profile.columns):
+        return pd.DataFrame(columns=["Member State", "Innovation", "Geography"])
+    rows = []
+    for _, record in profile.iterrows():
+        geography = clean(record.get("Geography", ""))
+        for country in _countries_in_text(geography):
+            rows.append({
+                "Member State": country,
+                "Innovation": clean(record.get("Innovation", "")),
+                "Geography": geography,
+            })
+    return pd.DataFrame(rows)
+
+
+def _d3_interview_locations(matrix):
+    """Map D3 evidence-provenance, not physical field-research sites."""
+    determinations = table(matrix, "44_GRS_Determinations")
+    if determinations.empty or "Source interviews" not in determinations.columns:
+        return pd.DataFrame(columns=["Member State", "Interview references"])
+    rows = []
+    aliases = _country_aliases()
+    for _, record in determinations.iterrows():
+        references = clean(record.get("Source interviews", ""))
+        for code in re.findall(r"KII-([A-Z]{3})-", references):
+            country = aliases.get(code.lower())
             if country:
-                counts[country] += 1
-    return counts
+                rows.append({"Member State": country, "Interview references": references})
+    return pd.DataFrame(rows)
+
+
+def _attach_reference_points(records):
+    locations = pd.DataFrame(SADC_SCOPE_LOCATIONS)
+    return records.merge(locations, on="Member State", how="left")
 
 
 def show_gis_scope_map(matrix):
     """Administrator-only D2/D3 evidence and opportunity mapping workspace."""
     st.subheader("D2/D3 Evidence and Opportunity Map")
     st.caption(
-        "Regional evidence map for the D2 Innovation Landscape Assessment and D3 Gap Analysis. "
-        "It distinguishes evidence geography from verified physical innovation sites."
+        "The map changes by layer using the governed D2 Geography field and D3 source-interview provenance. "
+        "It maps evidence geography, not unverified physical research sites."
     )
 
     map_layer = st.selectbox(
@@ -2297,54 +2318,83 @@ def show_gis_scope_map(matrix):
         ],
         key="d2_d3_map_layer",
     )
+    d2_records = _d2_innovation_locations(matrix)
+    d3_interviews = _d3_interview_locations(matrix)
     locations = pd.DataFrame(SADC_SCOPE_LOCATIONS)
-    locations["Research coverage"] = locations["Member State"].map(
-        D2_D3_RESEARCH_COVERAGE
-    ).fillna(DEFAULT_RESEARCH_COVERAGE)
 
     if "D2 innovation ecosystem" in map_layer:
-        counts = _matrix_country_counts(matrix, "D2 innovation ecosystem")
-        locations["Mapped D2 records"] = locations["Member State"].map(counts)
-        locations["Map status"] = locations["Mapped D2 records"].apply(
-            lambda count: "Country-attributed innovation evidence" if count else "Insufficient country-attributed evidence"
-        )
-        detail_columns = ["Member State", "Reference location", "Mapped D2 records", "Map status"]
+        visible = _attach_reference_points(d2_records)
+        title = "D2 innovation geography"
+        detail = (visible.groupby(["Member State", "Reference location"], dropna=False)
+                  .agg(**{"D2 innovations": ("Innovation", "nunique")})
+                  .reset_index())
+        description = "Markers appear only where the D2 Innovation Profile contains explicit country geography."
     elif "D3 gaps and opportunities" in map_layer:
-        counts = _matrix_country_counts(matrix, "D3 gaps and opportunities")
-        locations["Mapped D3 records"] = locations["Member State"].map(counts)
-        locations["Map status"] = locations["Mapped D3 records"].apply(
-            lambda count: "Country-attributed gap/opportunity evidence" if count else "Insufficient country-attributed evidence"
+        visible = _attach_reference_points(d3_interviews)
+        title = "D3 evidence-provenance geography"
+        gap_count = len(table(matrix, "15_Gap_Register"))
+        detail = (visible.groupby(["Member State", "Reference location"], dropna=False)
+                  .agg(**{"D3 source interviews": ("Interview references", "nunique")})
+                  .reset_index())
+        detail["Regional D3 gap set"] = f"{gap_count} governed gaps"
+        description = (
+            "D3 gaps are regional rather than assigned to a single country. This layer maps the "
+            "countries represented in the D3 coding/interview evidence, alongside the regional gap set."
         )
-        detail_columns = ["Member State", "Reference location", "Mapped D3 records", "Map status"]
-    elif "Programme pipeline" in map_layer:
-        counts = _matrix_country_counts(matrix, "Programme pipeline")
-        locations["Mapped pipeline records"] = locations["Member State"].map(counts)
-        locations["Map status"] = locations["Mapped pipeline records"].apply(
-            lambda count: "Country-attributed programme record" if count else "Insufficient country-attributed evidence"
+    elif "Stakeholder and consultation" in map_layer or "Research and evidence" in map_layer:
+        visible = locations.copy()
+        interview_counts = d3_interviews.groupby("Member State").size() if not d3_interviews.empty else pd.Series(dtype=int)
+        visible["D3 interview references"] = visible["Member State"].map(interview_counts).fillna(0).astype(int)
+        visible["Evidence status"] = visible.apply(
+            lambda row: "Interview coverage" if row["D3 interview references"] else
+            D2_D3_RESEARCH_COVERAGE.get(row["Member State"], DEFAULT_RESEARCH_COVERAGE),
+            axis=1,
         )
-        detail_columns = ["Member State", "Reference location", "Mapped pipeline records", "Map status"]
+        title = "Research and consultation evidence coverage"
+        detail = visible[["Member State", "Reference location", "D3 interview references", "Evidence status"]]
+        description = (
+            "Interview coverage identifies country-coded D3 source interviews. Literature / structured evidence "
+            "review is evidence coverage, not an assertion that consultation occurred in that Member State."
+        )
     elif "Hazard and transboundary" in map_layer:
-        locations["Map status"] = "Regional opportunity context"
-        locations["Context"] = "Use with validated hazard, exposure and transboundary datasets"
-        detail_columns = ["Member State", "Reference location", "Context"]
-    elif "Governed prioritisation" in map_layer:
-        locations["Map status"] = "Presentation layer — awaiting country-attributed scoring evidence"
-        detail_columns = ["Member State", "Reference location", "Map status"]
+        visible = pd.DataFrame([
+            {"Member State": "Great Limpopo TFCA", "Reference location": "Regional reference centroid", "Latitude": -22.35, "Longitude": 31.25},
+            {"Member State": "Kavango–Zambezi TFCA (KAZA)", "Reference location": "Regional reference centroid", "Latitude": -17.75, "Longitude": 24.70},
+            {"Member State": "Maloti–Drakensberg", "Reference location": "Regional reference centroid", "Latitude": -29.45, "Longitude": 29.30},
+        ])
+        title = "Transboundary opportunity context"
+        detail = visible[["Member State", "Reference location"]]
+        description = "Reference centroids only; they are not legal boundaries or hazard footprints."
     else:
-        locations["Map status"] = locations["Research coverage"]
-        detail_columns = ["Member State", "Reference location", "Research coverage", "Map status"]
+        visible = _attach_reference_points(d2_records)
+        title = "Governed innovation / programme presentation geography"
+        portfolio = table(matrix, "06_Portfolio")
+        scores = portfolio[["Innovation", "IPI v2.0 (computed)", "Confidence"]].copy() if not portfolio.empty else pd.DataFrame()
+        detail = visible.merge(scores, on="Innovation", how="left")
+        detail = detail[["Member State", "Reference location", "Innovation", "IPI v2.0 (computed)", "Confidence"]]
+        description = (
+            "A governed presentation layer: D2 geographic evidence is displayed with the current matrix "
+            "prioritisation fields. It is not a country score and does not infer country-level readiness."
+        )
 
-    chosen = st.multiselect(
-        "Member States to display",
-        locations["Member State"].tolist(),
-        default=locations["Member State"].tolist(),
-        key="d2_d3_map_member_states",
-    )
-    visible = locations.loc[locations["Member State"].isin(chosen)].copy()
     if visible.empty:
-        st.info("Select at least one Member State to view its evidence geography.")
+        st.warning("This governed layer has no mappable country-attributed record yet.")
         return
 
+    selected = st.multiselect(
+        "Display locations",
+        visible["Member State"].dropna().drop_duplicates().tolist(),
+        default=visible["Member State"].dropna().drop_duplicates().tolist(),
+        key="d2_d3_map_member_states",
+    )
+    visible = visible.loc[visible["Member State"].isin(selected)].copy()
+    detail = detail.loc[detail["Member State"].isin(selected)].copy()
+    if visible.empty:
+        st.info("Select at least one mapped location.")
+        return
+
+    st.markdown(f"**{title}**")
+    st.caption(description)
     st.map(
         visible.rename(columns={"Latitude": "lat", "Longitude": "lon"}),
         latitude="lat",
@@ -2354,19 +2404,14 @@ def show_gis_scope_map(matrix):
         zoom=3,
         use_container_width=True,
     )
-    st.dataframe(
-        visible[detail_columns + ["Latitude", "Longitude"]],
-        hide_index=True,
-        use_container_width=True,
-    )
+    st.dataframe(detail, hide_index=True, use_container_width=True)
     st.warning(
-        "Evidence rule: an absence of a mapped country-attributed record is not evidence "
-        "that no innovation, gap or stakeholder exists there. It means the current governed "
-        "matrix does not yet hold a location-linked record for that layer."
+        "Evidence rule: absent mapped evidence is not proof of absent innovation. "
+        "The map reports only what is explicitly attributable in the governed D2/D3 source record."
     )
     st.info(
-        "Maps 1–5 are GIS evidence layers. Maps 6–7 are governed scoring and presentation "
-        "layers and should be used only after country-attributed D2/D3 records are confirmed."
+        "Maps 1–5 are GIS evidence layers. Maps 6–7 are governed scoring/presentation layers. "
+        "Calculated outputs remain read-only; new source evidence must be added through the governed matrix."
     )
 
 
