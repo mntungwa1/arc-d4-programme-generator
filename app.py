@@ -53,6 +53,16 @@ SADC_SCOPE_LOCATIONS = [
     {"Member State": "Zambia", "Reference location": "Lusaka", "Latitude": -15.388, "Longitude": 28.322},
     {"Member State": "Zimbabwe", "Reference location": "Harare", "Latitude": -17.825, "Longitude": 31.033},
 ]
+
+# D2/D3 research provenance. The virtual consultancy did not create physical
+# field-research sites. These labels show the location to which the evidence,
+# consultation or documentary coverage relates; absence is never evidence that
+# no innovation exists in that Member State.
+D2_D3_RESEARCH_COVERAGE = {
+    "Angola": "Interview coverage",
+    "Mauritius": "Interview coverage",
+}
+DEFAULT_RESEARCH_COVERAGE = "Literature / structured evidence review"
 BOOK = Path(__file__).parent / "ARC_D4_Automation_Matrix.b64"
 SADC_PROPOSAL_TEMPLATE = Path(__file__).parent / "SADC_Proposal_Template.b64"
 SADC_PROPOSAL_TEMPLATE_PARTS = [
@@ -2210,24 +2220,131 @@ if not selected_portfolio.empty:
         if pd.notna(source_value) and yes(source_value):
             profile.setdefault(f"score_{symbol}", float(source_value))
 
-def show_gis_scope_map():
-    """Administrator-only D1 scope map for the 16 SADC Member States."""
-    st.subheader("GIS scope map")
+def _normalise_country(value):
+    return re.sub(r"[^a-z]", "", clean(value).lower())
+
+
+def _country_aliases():
+    aliases = {}
+    for entry in SADC_SCOPE_LOCATIONS:
+        key = entry["Member State"]
+        aliases[_normalise_country(key)] = key
+    aliases.update({
+        "drc": "Democratic Republic of the Congo",
+        "drcongo": "Democratic Republic of the Congo",
+        "democraticrepublicofthecongo": "Democratic Republic of the Congo",
+        "tanzania": "Tanzania",
+        "unitedrepublicoftanzania": "Tanzania",
+        "eswatini": "Eswatini",
+        "swaziland": "Eswatini",
+    })
+    return aliases
+
+
+def _country_column(frame):
+    recognised = {
+        "country", "memberstate", "memberstatecountry", "sadcmemberstate",
+        "locationcountry", "geography", "geographiccoverage",
+    }
+    for column in frame.columns:
+        if _normalise_country(column) in recognised:
+            return column
+    return None
+
+
+def _matrix_country_counts(matrix, layer):
+    """Count only explicit country-attributed records in the governed matrix."""
+    aliases = _country_aliases()
+    counts = {entry["Member State"]: 0 for entry in SADC_SCOPE_LOCATIONS}
+    layer_terms = {
+        "D2 innovation ecosystem": ("portfolio", "innovation", "ecosystem", "landscape"),
+        "D3 gaps and opportunities": ("gap", "opportunity", "priority", "readiness", "resolution"),
+        "Programme pipeline": ("stage", "step", "output", "product", "programme"),
+    }
+    terms = layer_terms.get(layer, ())
+    for sheet_name, frame in matrix.items():
+        sheet_key = clean(sheet_name).lower()
+        if terms and not any(term in sheet_key for term in terms):
+            continue
+        country_field = _country_column(frame)
+        if country_field is None:
+            continue
+        for raw_value in frame[country_field].dropna():
+            country = aliases.get(_normalise_country(raw_value))
+            if country:
+                counts[country] += 1
+    return counts
+
+
+def show_gis_scope_map(matrix):
+    """Administrator-only D2/D3 evidence and opportunity mapping workspace."""
+    st.subheader("D2/D3 Evidence and Opportunity Map")
     st.caption(
-        "D1 Inception Report scope: regional coverage across all 16 SADC Member States. "
-        "Markers are capital-city geographic reference points for programme planning."
+        "Regional evidence map for the D2 Innovation Landscape Assessment and D3 Gap Analysis. "
+        "It distinguishes evidence geography from verified physical innovation sites."
+    )
+
+    map_layer = st.selectbox(
+        "Map layer",
+        [
+            "1. Research and evidence coverage",
+            "2. D2 innovation ecosystem",
+            "3. D3 gaps and opportunities",
+            "4. Stakeholder and consultation coverage",
+            "5. Hazard and transboundary opportunity context",
+            "6. Governed prioritisation view",
+            "7. Programme pipeline view",
+        ],
+        key="d2_d3_map_layer",
     )
     locations = pd.DataFrame(SADC_SCOPE_LOCATIONS)
+    locations["Research coverage"] = locations["Member State"].map(
+        D2_D3_RESEARCH_COVERAGE
+    ).fillna(DEFAULT_RESEARCH_COVERAGE)
+
+    if "D2 innovation ecosystem" in map_layer:
+        counts = _matrix_country_counts(matrix, "D2 innovation ecosystem")
+        locations["Mapped D2 records"] = locations["Member State"].map(counts)
+        locations["Map status"] = locations["Mapped D2 records"].apply(
+            lambda count: "Country-attributed innovation evidence" if count else "Insufficient country-attributed evidence"
+        )
+        detail_columns = ["Member State", "Reference location", "Mapped D2 records", "Map status"]
+    elif "D3 gaps and opportunities" in map_layer:
+        counts = _matrix_country_counts(matrix, "D3 gaps and opportunities")
+        locations["Mapped D3 records"] = locations["Member State"].map(counts)
+        locations["Map status"] = locations["Mapped D3 records"].apply(
+            lambda count: "Country-attributed gap/opportunity evidence" if count else "Insufficient country-attributed evidence"
+        )
+        detail_columns = ["Member State", "Reference location", "Mapped D3 records", "Map status"]
+    elif "Programme pipeline" in map_layer:
+        counts = _matrix_country_counts(matrix, "Programme pipeline")
+        locations["Mapped pipeline records"] = locations["Member State"].map(counts)
+        locations["Map status"] = locations["Mapped pipeline records"].apply(
+            lambda count: "Country-attributed programme record" if count else "Insufficient country-attributed evidence"
+        )
+        detail_columns = ["Member State", "Reference location", "Mapped pipeline records", "Map status"]
+    elif "Hazard and transboundary" in map_layer:
+        locations["Map status"] = "Regional opportunity context"
+        locations["Context"] = "Use with validated hazard, exposure and transboundary datasets"
+        detail_columns = ["Member State", "Reference location", "Context"]
+    elif "Governed prioritisation" in map_layer:
+        locations["Map status"] = "Presentation layer — awaiting country-attributed scoring evidence"
+        detail_columns = ["Member State", "Reference location", "Map status"]
+    else:
+        locations["Map status"] = locations["Research coverage"]
+        detail_columns = ["Member State", "Reference location", "Research coverage", "Map status"]
+
     chosen = st.multiselect(
         "Member States to display",
         locations["Member State"].tolist(),
         default=locations["Member State"].tolist(),
-        key="gis_scope_member_states",
+        key="d2_d3_map_member_states",
     )
     visible = locations.loc[locations["Member State"].isin(chosen)].copy()
     if visible.empty:
-        st.info("Select at least one Member State to view its geographic reference point.")
+        st.info("Select at least one Member State to view its evidence geography.")
         return
+
     st.map(
         visible.rename(columns={"Latitude": "lat", "Longitude": "lon"}),
         latitude="lat",
@@ -2238,14 +2355,18 @@ def show_gis_scope_map():
         use_container_width=True,
     )
     st.dataframe(
-        visible[["Member State", "Reference location", "Latitude", "Longitude"]],
+        visible[detail_columns + ["Latitude", "Longitude"]],
         hide_index=True,
         use_container_width=True,
     )
+    st.warning(
+        "Evidence rule: an absence of a mapped country-attributed record is not evidence "
+        "that no innovation, gap or stakeholder exists there. It means the current governed "
+        "matrix does not yet hold a location-linked record for that layer."
+    )
     st.info(
-        "These markers show the D1 programme-coverage geography, not confirmed innovation sites. "
-        "Add an innovation's exact coordinates only once they are supplied or validated through the "
-        "Member State / implementing institution."
+        "Maps 1–5 are GIS evidence layers. Maps 6–7 are governed scoring and presentation "
+        "layers and should be used only after country-attributed D2/D3 records are confirmed."
     )
 
 
@@ -2395,8 +2516,8 @@ def render_workspace(workspace):
 
     elif workspace == "Submission-ready report":
         show_submission_ready_report(matrix, profile)
-    elif workspace == "GIS scope map":
-        show_gis_scope_map()
+    elif workspace == "D2/D3 Evidence and Opportunity Map":
+        show_gis_scope_map(matrix)
     else:
         show_funding_proposal_workspace(matrix, profile)
 
@@ -2446,7 +2567,7 @@ if is_admin:
                 "Workstream D — innovation delivery",
                 "Research and verification",
                 "Product readiness",
-                "GIS scope map",
+                "D2/D3 Evidence and Opportunity Map",
             ],
             key="administration_workspace",
         )
