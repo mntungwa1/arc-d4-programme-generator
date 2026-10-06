@@ -344,13 +344,18 @@ def auth_sidebar():
 
 def approval_controls():
     if "d4_auth_session" not in st.session_state:
+        st.session_state["d4_is_admin"] = False
         return False
     try:
         service = client()
         user = service.auth.get_user().user
         email = (user.email or "").lower()
+        is_admin = email in ADMIN_EMAILS
+        # Administrator status is calculated from the verified Supabase user,
+        # not from browser-editable user metadata.
+        st.session_state["d4_is_admin"] = is_admin
         authorised = bool(service.rpc("d4_is_current_user_authorised").execute().data)
-        if email in ADMIN_EMAILS:
+        if is_admin:
             with st.sidebar:
                 st.divider()
                 st.subheader("Account approvals")
@@ -2066,6 +2071,7 @@ def show_funding_proposal_workspace(matrix, profile):
 
 auth_sidebar()
 signed_in = approval_controls()
+is_admin = signed_in and bool(st.session_state.get("d4_is_admin"))
 
 # The login, account-confirmation and access-request controls remain public.
 # All controlled programme data, document previews, generated files and downloads
@@ -2230,9 +2236,10 @@ def render_workspace(workspace):
             if ranking["Ranking status"].eq("Pending").any():
                 st.warning("S2 attention: the shortlist cannot be formally published until the pending index determinations are resolved by the SADC Secretariat determination session.")
         with tabs[2]:
-            if not signed_in:
-                st.warning("Sign in before admitting a shared innovation.")
-            profile_form(matrix, st.session_state.new_profile, "new", signed_in)
+            if not is_admin:
+                st.info("Only Dingaan Mahlangu and Dr Cliff Ferguson can add a new innovation to the controlled shared register.")
+            else:
+                profile_form(matrix, st.session_state.new_profile, "new", signed_in)
 
     elif workspace == "Workstream D — innovation delivery":
         stages = table(matrix, "01_Stages")
@@ -2324,14 +2331,19 @@ def render_workspace(workspace):
     else:
         show_funding_proposal_workspace(matrix, profile)
 
-# The public workspace deliberately exposes only the programme data,
-# document hub and funding proposal. Detailed administration remains in code
-# but is not presented as a competing selector to programme users.
-tab_data, tab_documents, tab_funding = st.tabs([
+# Approved colleagues see only the three controlled product workspaces.
+# Dingaan Mahlangu and Dr Cliff Ferguson additionally receive the internal
+# administration workspace, including portfolio admission and operational tabs.
+tab_labels = [
     "Innovation Program Data",
     "Individual Documentation Hub",
     "Individual Funding Proposal",
-])
+]
+if is_admin:
+    tab_labels.append("Administration")
+
+tabs = st.tabs(tab_labels)
+tab_data, tab_documents, tab_funding = tabs[:3]
 
 with tab_data:
     st.text_input(
@@ -2352,4 +2364,22 @@ with tab_funding:
     choose_active_innovation("innovation_funding_selector")
     show_t10_funding_proposal_workspace(matrix, profile)
     st.caption("Developed by Academy of Resilience and Continuity")
+
+if is_admin:
+    with tabs[3]:
+        st.subheader("Internal administration")
+        st.caption("Restricted to Dingaan Mahlangu and Dr Cliff Ferguson.")
+        administration_workspace = st.selectbox(
+            "Internal workspace",
+            [
+                "Programme command",
+                "Workstream C — portfolio admission",
+                "Workstream D — innovation delivery",
+                "Research and verification",
+                "Product readiness",
+            ],
+            key="administration_workspace",
+        )
+        render_workspace(administration_workspace)
+        st.caption("Developed by Academy of Resilience and Continuity")
 
