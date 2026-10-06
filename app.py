@@ -2084,7 +2084,13 @@ if not signed_in:
     st.stop()
 
 try:
-    uploaded = st.sidebar.file_uploader("Replace the governed automation matrix", type="xlsx")
+    uploaded = None
+    if is_admin:
+        with st.sidebar:
+            st.divider()
+            st.subheader("Governed matrix")
+            uploaded = st.file_uploader("Replace the governed automation matrix", type="xlsx")
+            st.caption("Administrator-only control.")
     matrix = read_matrix(uploaded) if uploaded else default_matrix("matrix-v4-final-sadc-template-pack")
 except Exception as exc:
     st.error(f"The automation matrix could not be read: {exc}")
