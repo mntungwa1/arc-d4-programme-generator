@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import inspect
 import re
 import shutil
@@ -1026,7 +1027,8 @@ def show_submission_product_hub(matrix, profile, product_codes, selected_innovat
                 else:
                     preview_docx = build_filled_submission_product_docx(matrix, profile, selected_preview)
                     preview_pdf = render_submission_product_preview_pdf(preview_docx)
-                st.pdf(preview_pdf, height="stretch", key=f"pdf_preview_{selected_preview}_{selected_innovation}")
+                preview_revision = hashlib.sha256(preview_pdf).hexdigest()
+                st.pdf(preview_pdf, height="stretch", key=f"pdf_preview_{selected_preview}_{selected_innovation}_{preview_revision}")
             except Exception as exc:
                 st.error(f"{selected_preview} preview could not be prepared: {exc}")
 
@@ -1440,9 +1442,8 @@ def render_submission_product_preview_pdf(docx_content):
 
 
 
-@st.cache_data(show_spinner=False)
 def p1a_submission_preview_pdf():
-    """Return the faithful rendered PDF of the controlled P1a final source. Cache version 2."""
+    """Read the deployed P1a preview parts on every call so updates are visible."""
     encoded_parts = [
         part.read_text(encoding="utf-8")
         for part in P1A_SUBMISSION_PREVIEW_PARTS
