@@ -81,7 +81,7 @@ FINAL_P1A_SUBMISSION_DOCUMENT = Path(__file__).parent / "Final_SADC_DRM_Innovati
 # Faithful PDF rendering of the approved P1a source, split only for reliable deployment.
 # The original approved Word source remains untouched.
 P1A_SUBMISSION_PREVIEW_PARTS = [
-    Path(__file__).parent / f"P1a_Submission_Preview.part{number:02d}"
+    Path(__file__).parent / f"P1a_Final_Preview.part{number:02d}.txt"
     for number in range(1, 17)
 ]
 # Final P1b Summary Brief supplied for the programme-wide product.
@@ -1477,9 +1477,10 @@ def corrected_t5_template_docx():
 def build_filled_submission_product_docx(matrix, profile, product_code):
     """Use the supplied data-driven routine to create a fully populated product."""
     if product_code == "P1a":
-        if not FINAL_P1A_SUBMISSION_DOCUMENT.exists():
-            raise FileNotFoundError("The approved P1a submission document is not available.")
-        return FINAL_P1A_SUBMISSION_DOCUMENT.read_bytes()
+        parts = [Path(__file__).parent / f"P1a_Final_Source.part{number:02d}.txt" for number in range(1, 17)]
+        if not all(part.exists() for part in parts):
+            raise FileNotFoundError("The final P1a programme document is not available.")
+        return base64.b64decode("".join(part.read_text(encoding="utf-8").strip() for part in parts))
     if product_code == "P1b":
         return p1b_summary_brief_docx()
     if product_code == "P9":
